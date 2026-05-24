@@ -2,7 +2,7 @@
 
 Melissa is a personal AI assistant that lives in Telegram. She manages tasks, calendar events, and email — and delivers morning/evening briefings automatically every day.
 
-**Telegram handle:** [@Melizion_bot](https://t.me/Melizion_bot)
+**Telegram handle:** configured via `TELEGRAM_TOKEN` in `.env`
 
 ---
 
@@ -10,7 +10,7 @@ Melissa is a personal AI assistant that lives in Telegram. She manages tasks, ca
 
 - **Natural language task management** — add, update, complete, and delete tasks by chatting. Tasks are persisted in a hosted task dashboard.
 - **Google Calendar integration** — add events and get your daily agenda via natural language.
-- **Gmail triage** — scans both personal and Berkeley email accounts and surfaces only emails from real people that need a reply.
+- **Gmail triage** — scans multiple Gmail accounts and surfaces only emails from real people that need a reply.
 - **Voice messages** — transcribes voice notes via OpenAI Whisper, then processes them as text.
 - **Morning briefing** (7 AM PT) — agenda, overdue/today tasks, and actionable emails in one formatted message.
 - **Evening briefing** (8 PM PT) — today's remaining tasks, tomorrow's agenda, and a check-in on what got done.
@@ -76,8 +76,8 @@ Required variables:
 | `TASK_API_SECRET` | Bearer token for the task API |
 | `GOOGLE_CLIENT_ID` | Google OAuth2 client ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth2 client secret |
-| `GOOGLE_REFRESH_TOKEN` | Refresh token for personal Gmail/Calendar |
-| `GOOGLE_REFRESH_TOKEN_BERKELEY` | Refresh token for Berkeley Gmail/Calendar |
+| `GOOGLE_REFRESH_TOKEN` | Refresh token for primary Gmail/Calendar account |
+| `GOOGLE_REFRESH_TOKEN_BERKELEY` | Refresh token for secondary Gmail/Calendar account |
 | `TASKS_MCP_PATH` | Absolute path to `tasks-mcp.js` |
 | `CALENDAR_MCP_PATH` | Absolute path to `calendar-mcp.js` |
 
@@ -123,13 +123,13 @@ Tasks are automatically categorized based on keywords:
 | Category | Keywords |
 |---|---|
 | Golf club | golf, club, tee |
-| Finanzas | pagar, banco, zelle, tarjeta |
-| Clases | clase, tarea, prueba, examen |
-| Ayudantias | ayudantía, ayudante |
-| Recruiting | postular, entrevista, cv |
+| Finance | payment, bank, transfer |
+| Classes | class, homework, exam |
+| Teaching | teaching assistant, grading |
+| Recruiting | application, interview, cv |
 | S3 | S3, startup |
-| University | berkeley, GSB, campus |
-| Otros | (default) |
+| University | university, campus |
+| Other | (default) |
 
 ---
 
