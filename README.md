@@ -9,6 +9,7 @@ Melissa is a personal AI assistant that lives in Telegram. She manages tasks, ca
 ## Features
 
 - **Natural language task management** — add, update, complete, and delete tasks by chatting. Tasks are persisted in a hosted task dashboard.
+- **Dynamic task categories** — categories live in `categories.json` (not hardcoded). Create a new one on the fly just by chatting — "agrega la categoría Viajes" — and Melissa infers the keywords automatically and persists it.
 - **Google Calendar integration** — add events and get your daily agenda via natural language.
 - **Gmail triage** — scans multiple Gmail accounts and surfaces only emails from real people that need a reply.
 - **Voice messages** — transcribes voice notes via OpenAI Whisper, then processes them as text.
@@ -32,7 +33,8 @@ Telegram ──long-poll──▶ melissa.js ──▶ OpenAI GPT-4 (tool_choice
 ```
 
 - **`melissa.js`** — main bot loop. Handles Telegram long-polling, routes messages through GPT-4 with tool use, and manages conversation history per chat.
-- **`tasks-mcp.js`** — MCP server wrapping the task dashboard REST API (list, add, update, delete tasks).
+- **`tasks-mcp.js`** — MCP server wrapping the task dashboard REST API (list, add, update, delete tasks, and add categories). Loads the category list from `categories.json` at startup.
+- **`categories.json`** — the source of truth for task categories and their inference keywords. Read by both `melissa.js` (to build the system prompt) and `tasks-mcp.js` (to validate task categories). Editable by hand or via the `add_category` tool.
 - **`calendar-mcp.js`** — MCP server wrapping Google Calendar and Gmail APIs via OAuth.
 - Both MCP servers are spawned as child processes and communicate over stdin/stdout (JSON-RPC). They auto-restart on crash.
 
@@ -118,18 +120,36 @@ ssh -i ~/.ssh/id_ed25519 opc@<VM_IP> "sudo cp /tmp/melissa.js /root/whatsapp-bot
 
 ## Task categories
 
-Tasks are automatically categorized based on keywords:
+Categories are stored in **`categories.json`** as a list of `{ name, keywords }` objects — they are **not** hardcoded in the source. On startup, `tasks-mcp.js` loads them to validate the `tipo` of each task, and `melissa.js` injects them into the system prompt so GPT can infer the right category from context. When `add_task` is called, Melissa picks the category from the user's wording or infers it from these keywords.
 
-| Category | Keywords |
+Default categories:
+
+| Category | Inference keywords |
 |---|---|
+| Ayudantias | ayudantía, ayudante |
+| Clases | clase, tarea, prueba, examen |
+| Finanzas | pagar, banco, zelle, tarjeta |
 | Golf club | golf, club, tee |
-| Finance | payment, bank, transfer |
-| Classes | class, homework, exam |
-| Teaching | teaching assistant, grading |
-| Recruiting | application, interview, cv |
+| Otros | _(default — used when nothing else matches)_ |
+| Recruiting | postular, entrevista, cv |
 | S3 | S3, startup |
-| University | university, campus |
-| Other | (default) |
+| University | berkeley, GSB, campus |
+
+### Adding a category
+
+You don't need to edit code. Just tell Melissa in chat:
+
+> "agrega la categoría Viajes"
+
+She calls the `add_category` tool, which:
+
+1. Infers 3–5 obvious keywords from the name (no need to spell them out).
+2. Appends `{ name, keywords }` to `categories.json` using an **atomic write** (temp file + rename) so the file can never be left corrupted.
+3. Rejects empty or duplicate names.
+
+The new category is available in the **next conversation** (the MCP server reloads the list on restart; `melissa.js` reads it fresh on every message).
+
+> **Note:** Categories are stored in their own file rather than in `config.json` on purpose — `config.json` holds API keys and tokens, so keeping category writes isolated means a bad write can never break the bot's credentials.
 
 ---
 

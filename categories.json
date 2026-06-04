@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Ayudantias",
+    "keywords": [
+      "ayudantía",
+      "ayudante"
+    ]
+  },
+  {
+    "name": "Clases",
+    "keywords": [
+      "clase",
+      "tarea",
+      "prueba",
+      "examen"
+    ]
+  },
+  {
+    "name": "Finanzas",
+    "keywords": [
+      "pagar",
+      "banco",
+      "zelle",
+      "tarjeta"
+    ]
+  },
+  {
+    "name": "Golf club",
+    "keywords": [
+      "golf",
+      "club",
+      "tee"
+    ]
+  },
+  {
+    "name": "Otros",
+    "keywords": []
+  },
+  {
+    "name": "Recruiting",
+    "keywords": [
+      "postular",
+      "entrevista",
+      "cv"
+    ]
+  },
+  {
+    "name": "S3",
+    "keywords": [
+      "S3",
+      "startup"
+    ]
+  },
+  {
+    "name": "University",
+    "keywords": [
+      "berkeley",
+      "GSB",
+      "campus"
+    ]
+  }
+]
