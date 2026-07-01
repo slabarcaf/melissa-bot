@@ -430,8 +430,11 @@ async function sendMonthlyUsageReport() {
 async function sendBriefing(type) {
   const chatId = cfg.telegram_chat_id;
   if (!chatId) { console.log('[cron] no chat_id yet, skipping'); return; }
+  const morningEmailsEnabled = cfg.morning_emails_paused !== true;
   const text = type === 'morning'
-    ? 'Buenos días. Dame mi resumen matutino siguiendo el formato de FORMAT RULES: llama a list_calendar_events con days_ahead 1 (muestra solo eventos de HOY; si no hay, escribe exactamente "Sin eventos hoy"), list_tasks con filter overdue_and_today, scan_gmail_for_actions con account all y newer_than_days 2, list_debts con filter pending, y list_contacts con filter due. Muestra las secciones 📅 AGENDA HOY, 📬 EMAILS, ✅ TAREAS agrupadas por categoría, 💰 DEUDAS PENDIENTES y 🤝 NETWORKING (follow-ups). Omite 💰 y 🤝 si no hay contenido.'
+    ? morningEmailsEnabled
+      ? 'Buenos días. Dame mi resumen matutino siguiendo el formato de FORMAT RULES: llama a list_calendar_events con days_ahead 1 (muestra solo eventos de HOY; si no hay, escribe exactamente "Sin eventos hoy"), list_tasks con filter overdue_and_today, scan_gmail_for_actions con account all y newer_than_days 2, list_debts con filter pending, y list_contacts con filter due. Muestra las secciones 📅 AGENDA HOY, 📬 EMAILS, ✅ TAREAS agrupadas por categoría, 💰 DEUDAS PENDIENTES y 🤝 NETWORKING (follow-ups). Omite 💰 y 🤝 si no hay contenido.'
+      : 'Buenos días. Dame mi resumen matutino siguiendo el formato de FORMAT RULES: llama a list_calendar_events con days_ahead 1 (muestra solo eventos de HOY; si no hay, escribe exactamente "Sin eventos hoy"), list_tasks con filter overdue_and_today, list_debts con filter pending, y list_contacts con filter due. Muestra las secciones 📅 AGENDA HOY, ✅ TAREAS agrupadas por categoría, 💰 DEUDAS PENDIENTES y 🤝 NETWORKING (follow-ups). Omite 💰 y 🤝 si no hay contenido.'
     : 'Buenas noches. Llama a list_tasks con filter overdue_and_today y list_calendar_events con days_ahead 2 (muestra solo eventos de MAÑANA en la sección 📅 AGENDA DE MAÑANA; si no hay, escribe exactamente "Sin eventos mañana"). Usa el formato de FORMAT RULES: ✅ TAREAS agrupadas por categoría (cada categoría aparece una sola vez), luego 📅 AGENDA DE MAÑANA. Luego pregunta: ¿Qué tareas completaste hoy?';
   await handleMessage(chatId, text);
 }
