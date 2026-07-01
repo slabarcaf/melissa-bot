@@ -7,6 +7,7 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const db = require('./db');
 
 const CFG_PATH = '/root/whatsapp-bot/config.json';
 const CATS_PATH = '/root/whatsapp-bot/categories.json';
@@ -27,6 +28,16 @@ function buildCategoriesSection() {
   const kws = cats.filter(c => c.keywords.length > 0)
     .map(c => `${c.keywords.join('/')} → ${c.name}`)
     .join(' | ');
+  return `== CATEGORIES ==\n${names}\n${kws} | default → Otros`;
+}
+
+function buildCategoriesSectionForUser(user) {
+  let cats;
+  try { cats = JSON.parse(user.categories || '[]'); } catch { cats = []; }
+  if (!cats.length) cats = [{ name: 'Work', keywords: ['trabajo','reunión','meeting'] }, { name: 'Personal', keywords: ['personal','casa'] }, { name: 'Otros', keywords: [] }];
+  const names = cats.map(c => c.name).join(' | ');
+  const kws   = cats.filter(c => c.keywords && c.keywords.length > 0)
+    .map(c => `${c.keywords.join('/')} → ${c.name}`).join(' | ');
   return `== CATEGORIES ==\n${names}\n${kws} | default → Otros`;
 }
 
@@ -188,6 +199,189 @@ May 2026 offsets (SF=PDT, SCL=CLT): Chile is 4 hours AHEAD of SF.
 
 If Santiago says he is traveling or changing city/country → call update_timezone with the matching timezone string. Act immediately, no confirmation needed. Confirm what timezone was set and that briefs were rescheduled.`;
 
+// ── Multi-user helpers ────────────────────────────────────────────────────────
+
+let botUsername = null;
+async function fetchBotInfo() {
+  const res = await tgRequest('getMe', {});
+  if (res.ok) botUsername = res.result.username;
+}
+
+const PRESET_CATEGORIES = [
+  { name: 'Work',          keywords: ['trabajo','work','office','meeting','reunión'] },
+  { name: 'Estudios',      keywords: ['clase','tarea','prueba','examen','estudio'] },
+  { name: 'Salud',         keywords: ['médico','doctor','gym','ejercicio','salud'] },
+  { name: 'Personal',      keywords: ['personal','casa','familia'] },
+  { name: 'Side Projects', keywords: ['proyecto','startup','side'] },
+  { name: 'Finanzas',      keywords: ['pagar','banco','zelle','tarjeta','dinero'] },
+  { name: 'Networking',    keywords: ['networking','contacto','conocí'] },
+  { name: 'Otros',         keywords: [] },
+];
+
+function parseCityToTimezone(text) {
+  const t = text.toLowerCase();
+  if (/santiago|chile/.test(t))              return 'America/Santiago';
+  if (/sf|san francisco|los angeles|california|la\b/.test(t)) return 'America/Los_Angeles';
+  if (/new york|nyc|\bny\b|east coast/.test(t)) return 'America/New_York';
+  if (/madrid|spain|españa/.test(t))         return 'Europe/Madrid';
+  if (/london|uk\b|england/.test(t))         return 'Europe/London';
+  if (/mexico|cdmx/.test(t))                 return 'America/Mexico_City';
+  if (/buenos aires|argentina/.test(t))      return 'America/Argentina/Buenos_Aires';
+  if (/miami|florida/.test(t))               return 'America/New_York';
+  if (/chicago|illinois/.test(t))            return 'America/Chicago';
+  if (/^[A-Za-z]+\/[A-Za-z_\/]+$/.test(text.trim())) return text.trim();
+  return 'America/Los_Angeles';
+}
+
+function parseCategorySelection(text) {
+  const nums = [...text.matchAll(/\d+/g)].map(m => parseInt(m[0]) - 1);
+  if (nums.length > 0) {
+    const selected = nums.map(i => PRESET_CATEGORIES[i]).filter(Boolean);
+    if (selected.length > 0) return selected;
+  }
+  return PRESET_CATEGORIES.filter(c => text.toLowerCase().includes(c.name.toLowerCase()));
+}
+
+function buildTutorialCard(name) {
+  return `¡Todo listo, ${name}! 🎉 Aquí va un resumen rápido de lo que puedes pedirme:
+
+📋 *TAREAS*
+Para agregar una tarea necesito:
+• Qué hay que hacer (descripción)
+• Fecha límite (hoy, mañana, el viernes, 15 de julio…)
+• Categoría (te confirmo antes de guardar)
+
+Ej: _"agrega tarea: revisar el contrato, para el jueves"_
+
+💰 *DEUDAS*
+Para registrar una deuda necesito:
+• Nombre de la persona
+• Monto y moneda (pesos, dólares, euros…)
+• Dirección: ¿te deben a ti o tú debes?
+
+Ej: _"Juan me debe 50 dólares por un asado"_
+Ej: _"le debo a María 200 pesos"_
+
+Cuando quieras, ¡empieza!`;
+}
+
+function filterToolsForUser(user) {
+  const f   = JSON.parse(user.features || '{}');
+  const san = String(user.chat_id) === String(cfg.telegram_chat_id);
+  return TOOLS.filter(t => {
+    const n = t.function.name;
+    if (!f.email      && n === 'scan_gmail_for_actions') return false;
+    if (!f.calendar   && ['add_calendar_event','update_calendar_event','list_calendar_events','lookup_google_contact'].includes(n)) return false;
+    if (!f.networking && ['add_contact','list_contacts','update_contact'].includes(n)) return false;
+    if (!f.finanzas   && ['add_debt','list_debts','update_debt_status'].includes(n)) return false;
+    if (!f.tasks      && ['list_tasks','add_task','update_task','update_tasks','delete_task','add_category'].includes(n)) return false;
+    if (!san          && n === 'get_usage') return false;
+    return true;
+  });
+}
+
+function buildSystemPromptForUser(user) {
+  const isSantiago = String(user.chat_id) === String(cfg.telegram_chat_id);
+  if (isSantiago) return SYSTEM_PROMPT.replace('__CATEGORIES__', buildCategoriesSection());
+
+  const preferredName = user.preferred_name || user.name || 'tú';
+  const features      = JSON.parse(user.features || '{}');
+  const cats          = buildCategoriesSectionForUser(user);
+
+  let prompt = SYSTEM_PROMPT
+    .replace('__CATEGORIES__', cats)
+    .replace(/\bSantiago\b/g, preferredName);
+
+  const disabled = [];
+  if (!features.email)      disabled.push('scan_gmail_for_actions');
+  if (!features.calendar)   disabled.push('add_calendar_event, update_calendar_event, list_calendar_events, lookup_google_contact');
+  if (!features.networking) disabled.push('add_contact, list_contacts, update_contact');
+
+  if (disabled.length > 0) {
+    const available = ['tareas', features.finanzas ? 'deudas' : null].filter(Boolean).join(' y ');
+    prompt += `\n\n== FUNCIONES NO DISPONIBLES ==\nPara este usuario solo están disponibles: ${available}. NO llames ni menciones: ${disabled.join(', ')}. Si el usuario solicita alguna de estas, responde: "Esa función no está disponible para ti por el momento."`;
+  }
+  return prompt;
+}
+
+// Filter task list output to only show tasks belonging to chatId.
+// Santiago (original user) sees all tasks without [uid:] prefix.
+// Other users see only tasks tagged [uid:CHATID] and that tag is stripped for display.
+function filterTaskOutput(text, chatId, isSantiago) {
+  const userTag = `[uid:${chatId}]`;
+  return text.split('\n').filter(line => {
+    if (!/ \[#\d+\]/.test(line)) return true; // not a task line — keep header/empty
+    if (isSantiago) return !line.includes('[uid:');
+    return line.includes(userTag);
+  }).map(line => line.replace(new RegExp(`\\[uid:${chatId}\\]\\s*`, 'g'), '')).join('\n');
+}
+
+// ── Onboarding state machine ──────────────────────────────────────────────────
+
+async function handleOnboarding(chatId, user, text) {
+  const state = user.onboarding;
+
+  if (state === 'new') {
+    db.updateUser(chatId, { onboarding: 'awaiting_name' });
+    await sendMessage(chatId, '¡Hola! Soy Melissa 👋 Tu asistente personal.\n\n¿Cómo quieres que te llame?');
+    return;
+  }
+
+  if (state === 'awaiting_name') {
+    const name = text.trim().split(/\s+/)[0]; // first word as preferred name
+    db.updateUser(chatId, { preferred_name: name, onboarding: 'awaiting_tz' });
+    const tzRef = '🌎 *Ciudad → Zona horaria*\nSantiago / Chile → America/Santiago\nSF / Los Angeles → America/Los_Angeles\nNueva York → America/New_York\nMadrid / España → Europe/Madrid\n...o escríbeme la zona IANA directamente.';
+    await sendMessage(chatId, `¡Hola, ${name}! 👋\n\n¿En qué ciudad estás actualmente?\n(Necesito saber para mostrarte fechas y briefs a la hora correcta)\n\n${tzRef}`);
+    return;
+  }
+
+  if (state === 'awaiting_tz') {
+    const tz = parseCityToTimezone(text);
+    db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_cats' });
+    const catList = PRESET_CATEGORIES.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+    await sendMessage(chatId, `✅ Zona horaria: *${tz}*\n\n¿Qué categorías quieres usar para organizar tus tareas?\n\n${catList}\n\nEscribe los números separados por coma (ej: 1, 3, 5) o los nombres. Puedes agregar más después.`);
+    return;
+  }
+
+  if (state === 'awaiting_cats') {
+    const selected = parseCategorySelection(text);
+    const cats = selected.length > 0 ? selected : [PRESET_CATEGORIES[0], PRESET_CATEGORIES[PRESET_CATEGORIES.length - 1]];
+    db.updateUser(chatId, { categories: JSON.stringify(cats), onboarding: 'done' });
+    const name = (db.getUser(chatId) || {}).preferred_name || 'tú';
+    await sendMessage(chatId, buildTutorialCard(name));
+    return;
+  }
+}
+
+// ── Invite email (Gmail API direct call) ─────────────────────────────────────
+
+async function sendInviteEmail(to, label, link) {
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: cfg.google_client_id, client_secret: cfg.google_client_secret,
+      refresh_token: cfg.google_refresh_token, grant_type: 'refresh_token',
+    }),
+  });
+  const tokenData = await tokenRes.json();
+  if (!tokenData.access_token) throw new Error('Gmail token refresh failed');
+
+  const subject = 'Te invitaron a Melissa — tu asistente personal';
+  const body    = `Hola ${label},\n\nTe invitaron a usar Melissa, un asistente personal inteligente en Telegram.\n\nHaz clic aquí para comenzar:\n${link}\n\n(El link es válido por 30 días. Si no tienes Telegram instalado, también funciona en tu navegador en web.telegram.org)\n\n— Santiago`;
+  const raw     = `To: ${to}\r\nSubject: ${subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
+  const encoded = Buffer.from(raw).toString('base64url');
+
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${tokenData.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw: encoded }),
+  });
+  const result = await res.json();
+  if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
+  return result;
+}
+
 // ── OpenAI tools ──────────────────────────────────────────────────────────────
 const TOOLS = [
   { type:'function', function:{ name:'list_tasks', description:'List tasks with optional filter', parameters:{ type:'object', properties:{ filter:{ type:'string', enum:['all','pending','today','tomorrow','this_week','overdue','overdue_and_today','on_hold'] }, section:{ type:'string' } } } } },
@@ -342,11 +536,40 @@ async function checkCalendarTimezone() {
 
 const TASK_TOOLS   = ['list_tasks','add_task','update_task','update_tasks','delete_task','get_usage','add_category'];
 const CAL_TOOLS    = ['add_calendar_event','update_calendar_event','list_calendar_events','scan_gmail_for_actions','lookup_google_contact'];
-const SHEETS_TOOLS = ['add_debt','list_debts','update_debt_status','add_contact','list_contacts','update_contact'];
+const SHEETS_TOOLS = ['add_contact','list_contacts','update_contact']; // finance moved to SQLite
 
-async function callTool(name, args) {
+async function callTool(name, args, chatId) {
+  const isSantiago = String(chatId) === String(cfg.telegram_chat_id);
   try {
-    if (name === 'update_timezone') return await doUpdateTimezone(args);
+    // ── Finance: SQLite per-user (replaces sheets-mcp finance tools) ──────────
+    if (name === 'add_debt')           return db.addDebt(chatId, args);
+    if (name === 'list_debts')         return db.listDebts(chatId, args.filter);
+    if (name === 'update_debt_status') return db.updateDebt(chatId, args.row, args.status);
+
+    // ── Timezone: update DB for non-Santiago, global cfg for Santiago ─────────
+    if (name === 'update_timezone') {
+      if (isSantiago) return await doUpdateTimezone(args);
+      if (!args.timezone) return 'Error: timezone string required';
+      db.updateUser(chatId, { timezone: args.timezone });
+      return `Timezone actualizado a ${args.timezone}.`;
+    }
+
+    // ── add_category: update user DB record for non-Santiago users ────────────
+    if (name === 'add_category' && !isSantiago) {
+      const { name: catName, keywords = [] } = args;
+      const user = db.getUser(chatId);
+      const cats = JSON.parse(user.categories || '[]');
+      if (!cats.find(c => c.name === catName)) cats.push({ name: catName, keywords });
+      db.updateUser(chatId, { categories: JSON.stringify(cats) });
+      return `✅ Categoría "${catName}" creada. Ya disponible en la próxima conversación.`;
+    }
+
+    // ── Task isolation: tag new tasks for non-Santiago users ─────────────────
+    if (name === 'add_task' && !isSantiago) {
+      args = { ...args, toDo: `[uid:${chatId}] ${args.toDo}` };
+    }
+
+    // ── Route to MCP server ──────────────────────────────────────────────────
     const proc = TASK_TOOLS.includes(name) ? taskServer
                : CAL_TOOLS.includes(name) ? calendarServer
                : SHEETS_TOOLS.includes(name) ? sheetsServer
@@ -356,8 +579,13 @@ async function callTool(name, args) {
                : calPending;
     if (!proc) return `Unknown tool: ${name}`;
     const result = await callMCP(proc, map, name, args);
-    if (result?.content) return result.content.map(c => c.text || JSON.stringify(c)).join('\n');
-    return JSON.stringify(result);
+    let text = result?.content ? result.content.map(c => c.text || JSON.stringify(c)).join('\n')
+                               : JSON.stringify(result);
+
+    // ── Task output: filter to only this user's tasks ─────────────────────────
+    if (name === 'list_tasks') text = filterTaskOutput(text, chatId, isSantiago);
+
+    return text;
   } catch (err) { return `Tool error: ${err.message}`; }
 }
 
@@ -370,19 +598,30 @@ function getHistory(chatId) {
 
 // ── Main LLM handler ──────────────────────────────────────────────────────────
 async function handleMessage(chatId, userText) {
+  const user = db.getUser(chatId);
+  if (!user) return;
+
+  // Route to onboarding if not complete
+  if (user.onboarding !== 'done') {
+    await handleOnboarding(chatId, user, userText);
+    return;
+  }
+
   const history = getHistory(chatId);
   history.push({ role:'user', content:userText });
   if (history.length > 20) history.splice(0, history.length - 20);
 
+  const tz = user.timezone || cfg.timezone || 'America/Los_Angeles';
   const now = new Date();
-  const todayISO = now.toLocaleDateString('en-CA', { timeZone: cfg.timezone || 'America/Los_Angeles' }); // YYYY-MM-DD
-  const todayReadable = now.toLocaleDateString('es-MX', { timeZone: cfg.timezone || 'America/Los_Angeles', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const systemWithDate = SYSTEM_PROMPT.replace('__CATEGORIES__', buildCategoriesSection()) + `\n\n== FECHA ACTUAL ==\nHoy es ${todayReadable} (${todayISO}). Usa esta fecha para calcular "hoy", "mañana", "el miércoles", "la próxima semana", etc. SIEMPRE usa año ${now.getFullYear()} en las fechas.`;
-  const messages = [{ role:'system', content:systemWithDate }, ...history];
-  const deadline = Date.now() + 55000;
+  const todayISO      = now.toLocaleDateString('en-CA', { timeZone: tz });
+  const todayReadable = now.toLocaleDateString('es-MX', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const systemWithDate = buildSystemPromptForUser(user) + `\n\n== FECHA ACTUAL ==\nHoy es ${todayReadable} (${todayISO}). Usa esta fecha para calcular "hoy", "mañana", "el miércoles", "la próxima semana", etc. SIEMPRE usa año ${now.getFullYear()} en las fechas.`;
+  const messages    = [{ role:'system', content:systemWithDate }, ...history];
+  const userTools   = filterToolsForUser(user);
+  const deadline    = Date.now() + 55000;
 
   try {
-    let response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:TOOLS, tool_choice:'auto' });
+    let response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
     if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
     let msg = response.choices[0].message;
     messages.push(msg);
@@ -391,7 +630,7 @@ async function handleMessage(chatId, userText) {
       const results = await Promise.all(msg.tool_calls.map(async tc => {
         const args = JSON.parse(tc.function.arguments || '{}');
         console.log(`[tool] ${tc.function.name}`, JSON.stringify(args).slice(0,80));
-        const result = await callTool(tc.function.name, args);
+        const result = await callTool(tc.function.name, args, chatId);
         return { tool_call_id:tc.id, role:'tool', content:result };
       }));
       messages.push(...results);
@@ -401,7 +640,7 @@ async function handleMessage(chatId, userText) {
         return;
       }
 
-      response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:TOOLS, tool_choice:'auto' });
+      response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
       if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
       msg = response.choices[0].message;
       messages.push(msg);
@@ -427,16 +666,39 @@ async function sendMonthlyUsageReport() {
   await handleMessage(chatId, `Mándame el reporte de uso de OpenAI para el mes ${month}`);
 }
 
+function buildBriefingText(type, features) {
+  const f = features;
+  if (type === 'morning') {
+    const parts  = ['Buenos días. Dame mi resumen matutino siguiendo el formato de FORMAT RULES:'];
+    const calls  = [];
+    const sects  = [];
+    if (f.calendar)                              { calls.push('list_calendar_events con days_ahead 1 (muestra solo eventos de HOY; si no hay, escribe exactamente "Sin eventos hoy")'); sects.push('📅 AGENDA HOY'); }
+    if (f.tasks)                                 { calls.push('list_tasks con filter overdue_and_today'); sects.push('✅ TAREAS agrupadas por categoría'); }
+    if (f.email && cfg.morning_emails_paused !== true) { calls.push('scan_gmail_for_actions con account all y newer_than_days 2'); sects.push('📬 EMAILS'); }
+    if (f.finanzas)                              { calls.push('list_debts con filter pending'); sects.push('💰 DEUDAS PENDIENTES'); }
+    if (f.networking)                            { calls.push('list_contacts con filter due'); sects.push('🤝 NETWORKING (follow-ups)'); }
+    parts.push('llama a ' + calls.join(', ') + '.');
+    parts.push(`Muestra las secciones ${sects.join(', ')}. Omite 💰 y 🤝 si no hay contenido.`);
+    return parts.join(' ');
+  }
+  // evening
+  let text = 'Buenas noches. Llama a list_tasks con filter overdue_and_today';
+  if (f.calendar) text += ' y list_calendar_events con days_ahead 2 (muestra solo eventos de MAÑANA en la sección 📅 AGENDA DE MAÑANA; si no hay, escribe exactamente "Sin eventos mañana")';
+  text += '. Usa el formato de FORMAT RULES: ✅ TAREAS agrupadas por categoría (cada categoría aparece una sola vez)';
+  if (f.calendar) text += ', luego 📅 AGENDA DE MAÑANA';
+  text += '. Luego pregunta: ¿Qué tareas completaste hoy?';
+  return text;
+}
+
 async function sendBriefing(type) {
-  const chatId = cfg.telegram_chat_id;
-  if (!chatId) { console.log('[cron] no chat_id yet, skipping'); return; }
-  const morningEmailsEnabled = cfg.morning_emails_paused !== true;
-  const text = type === 'morning'
-    ? morningEmailsEnabled
-      ? 'Buenos días. Dame mi resumen matutino siguiendo el formato de FORMAT RULES: llama a list_calendar_events con days_ahead 1 (muestra solo eventos de HOY; si no hay, escribe exactamente "Sin eventos hoy"), list_tasks con filter overdue_and_today, scan_gmail_for_actions con account all y newer_than_days 2, list_debts con filter pending, y list_contacts con filter due. Muestra las secciones 📅 AGENDA HOY, 📬 EMAILS, ✅ TAREAS agrupadas por categoría, 💰 DEUDAS PENDIENTES y 🤝 NETWORKING (follow-ups). Omite 💰 y 🤝 si no hay contenido.'
-      : 'Buenos días. Dame mi resumen matutino siguiendo el formato de FORMAT RULES: llama a list_calendar_events con days_ahead 1 (muestra solo eventos de HOY; si no hay, escribe exactamente "Sin eventos hoy"), list_tasks con filter overdue_and_today, list_debts con filter pending, y list_contacts con filter due. Muestra las secciones 📅 AGENDA HOY, ✅ TAREAS agrupadas por categoría, 💰 DEUDAS PENDIENTES y 🤝 NETWORKING (follow-ups). Omite 💰 y 🤝 si no hay contenido.'
-    : 'Buenas noches. Llama a list_tasks con filter overdue_and_today y list_calendar_events con days_ahead 2 (muestra solo eventos de MAÑANA en la sección 📅 AGENDA DE MAÑANA; si no hay, escribe exactamente "Sin eventos mañana"). Usa el formato de FORMAT RULES: ✅ TAREAS agrupadas por categoría (cada categoría aparece una sola vez), luego 📅 AGENDA DE MAÑANA. Luego pregunta: ¿Qué tareas completaste hoy?';
-  await handleMessage(chatId, text);
+  const users = db.getDoneUsers();
+  if (!users.length) { console.log('[cron] no done-users yet, skipping'); return; }
+  for (const user of users) {
+    const features = JSON.parse(user.features || '{}');
+    const text     = buildBriefingText(type, features);
+    if (!text) continue;
+    await handleMessage(user.chat_id, text);
+  }
 }
 
 // morning/evening/health crons scheduled via scheduleCrons() in start()
@@ -610,11 +872,11 @@ async function poll() {
       const message = update.message;
       if (!message) continue;
 
-      const chatId = message.chat.id;
+      const chatId   = message.chat.id;
       const fromName = message.from?.first_name || 'user';
-      let text = message.text || '';
+      let text       = message.text || '';
 
-      // Handle voice messages — transcribe with Whisper
+      // ── Handle voice messages — transcribe with Whisper ──────────────────
       const voiceFileId = message.voice?.file_id || message.audio?.file_id;
       if (voiceFileId && !text) {
         try {
@@ -623,35 +885,62 @@ async function poll() {
           console.log(`[voice→text] ${text.slice(0, 100)}`);
         } catch (err) {
           console.error('[voice error]', err.message);
-          if (chatId === cfg.telegram_chat_id) {
-            await sendMessage(chatId, '❌ No pude transcribir el audio. Intenta de nuevo.');
-          }
+          await sendMessage(chatId, '❌ No pude transcribir el audio. Intenta de nuevo.');
           continue;
         }
       }
 
       if (!text?.trim()) continue;
 
-      // Save chat_id on first contact
-      if (!cfg.telegram_chat_id) {
-        cfg.telegram_chat_id = chatId;
-        fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
-        console.log(`[setup] Saved chat_id: ${chatId} (${fromName})`);
-      }
-
-      // Only respond to authorized user
-      if (chatId !== cfg.telegram_chat_id) {
-        console.log(`[ignored] unknown user: ${chatId}`);
+      // ── Admin: /invite command (Santiago only) ────────────────────────────
+      if (chatId === cfg.telegram_chat_id && text.startsWith('/invite ')) {
+        const parts = text.slice(8).trim().split(/\s+/);
+        const label = parts[0];
+        const email = parts[1] && parts[1].includes('@') ? parts[1] : null;
+        if (!label) { await sendMessage(chatId, 'Uso: /invite <Nombre> [email@ejemplo.com]'); continue; }
+        const code = db.createInviteCode(label, chatId, email);
+        const link = `https://t.me/${botUsername || 'Melizion_bot'}?start=${code}`;
+        let reply   = `✅ Código generado para ${label}:\n\`${link}\`\nVálido por 30 días.`;
+        if (email) {
+          try {
+            await sendInviteEmail(email, label, link);
+            reply += `\n📧 Invitación enviada a ${email}.`;
+          } catch (e) {
+            reply += `\n⚠️ No pude enviar el email: ${e.message}`;
+          }
+        }
+        await sendMessage(chatId, reply);
         continue;
       }
 
-      // Deduplicate
+      // ── Invite claim: /start CODE ─────────────────────────────────────────
+      if (text.startsWith('/start ')) {
+        const code  = text.slice(7).trim();
+        const label = code ? db.claimInviteCode(code, chatId) : null;
+        if (code && label !== null) {
+          db.createUser(chatId, { name: label });
+          console.log(`[invite] ${fromName} (${chatId}) claimed code ${code} for "${label}"`);
+          await handleOnboarding(chatId, db.getUser(chatId), '');
+        } else if (code) {
+          await sendMessage(chatId, '❌ Ese código no es válido o ya fue usado. Pide a quien te invitó un nuevo link.');
+        }
+        // If no code (plain /start), fall through to authorization check
+        if (code) continue;
+      }
+
+      // ── Authorization: only registered users ──────────────────────────────
+      const user = db.getUser(chatId);
+      if (!user) {
+        console.log(`[ignored] unregistered: ${chatId}`);
+        continue;
+      }
+
+      // ── Deduplicate ───────────────────────────────────────────────────────
       const key = `${chatId}:${message.message_id}`;
       if (processing.has(key)) continue;
       processing.add(key);
 
-      console.log(`[in] ${fromName}: ${text.slice(0,100)}`);
-      // Queue ensures messages from same chat process one at a time (FIFO)
+      console.log(`[in] ${fromName}: ${text.slice(0, 100)}`);
       const _prev = chatQueues.get(chatId) || Promise.resolve();
       const _curr = _prev.then(
         () => handleMessage(chatId, text).catch(() => {}),
@@ -678,6 +967,20 @@ async function pollLoop() {
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 async function start() {
+  // ── SQLite: create tables + seed Santiago's user record ──────────────────
+  db.migrate();
+  if (cfg.telegram_chat_id) {
+    db.createUser(cfg.telegram_chat_id, {
+      name:           'Santiago',
+      preferred_name: 'Santiago',
+      onboarding:     'done',
+      timezone:       cfg.timezone || 'America/Los_Angeles',
+      features: {
+        tasks: true, finanzas: true, email: true, calendar: true, networking: true,
+      },
+    });
+  }
+
   taskServer = startMCPServer('/root/.openclaw/skills/tasks-mcp.js',
     { TASK_API_BASE: cfg.task_api_base, TASK_API_SECRET: cfg.task_api_secret },
     taskPending, 'tasks');
@@ -689,9 +992,11 @@ async function start() {
   sheetsServer = startMCPServer('/root/.openclaw/skills/sheets-mcp.js',
     { GOOGLE_CLIENT_ID: cfg.google_client_id, GOOGLE_CLIENT_SECRET: cfg.google_client_secret,
       GOOGLE_REFRESH_TOKEN_BERKELEY: cfg.google_refresh_token_berkeley,
-      FINANCE_SHEET_ID: cfg.finance_sheet_id, NETWORK_SHEET_ID: cfg.network_sheet_id,
+      NETWORK_SHEET_ID: cfg.network_sheet_id,
       TIMEZONE: cfg.timezone || 'America/Los_Angeles' },
     sheetsPending, 'sheets');
+
+  await fetchBotInfo();
 
   console.log('✅ Bot started — polling Telegram (no webhook needed)');
   console.log('   Send any message to @Melizion_bot on Telegram');
