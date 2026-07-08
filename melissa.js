@@ -908,7 +908,7 @@ async function runHealthCheck() {
 
       // 8. Orphan priority flags (priority.json references deleted task IDs)
       try {
-        const priorityRaw = fs.readFileSync('/root/.openclaw/priority.json', 'utf8');
+        const priorityRaw = fs.readFileSync(process.env.PRIORITY_FILE || '/root/.openclaw/priority.json', 'utf8');
         const priority = JSON.parse(priorityRaw);
         const taskIds = new Set(tasks.map(t => String(t.rowId)));
         const orphans = Object.keys(priority).filter(id => priority[id] && !taskIds.has(id));
