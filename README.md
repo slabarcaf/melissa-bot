@@ -8,8 +8,8 @@ Melissa is a personal AI assistant that lives in Telegram. She manages tasks, ca
 
 ## Features
 
-- **Natural language task management** — add, update, complete, and delete tasks by chatting. Tasks are persisted in a hosted task dashboard.
-- **Dynamic task categories** — categories live in `categories.json` (not hardcoded). Create a new one on the fly just by chatting — "agrega la categoría Viajes" — and Melissa infers the keywords automatically and persists it.
+- **Natural language task management** — add, update, complete, move, and delete tasks by chatting. Tasks are persisted in a hosted task dashboard. Every mutating action (mark done, move, delete) is **verified** with a follow-up `list_tasks` read before Melissa reports success — she never claims an action she didn't actually perform.
+- **Dynamic task categories** — categories live in `categories.json` (not hardcoded). Create a new one on the fly by chatting — "agrega la categoría Viajes" — but only with your explicit confirmation, and Melissa first checks that a same/similar category doesn't already exist before creating it.
 - **Google Calendar integration** — add events and get your daily agenda via natural language.
 - **Gmail triage** — scans multiple Gmail accounts and surfaces only emails from real people that need a reply.
 - **Voice messages** — transcribes voice notes via OpenAI Whisper, then processes them as text.
@@ -151,13 +151,15 @@ You don't need to edit code. Just tell Melissa in chat:
 
 > "agrega la categoría Viajes"
 
-She calls the `add_category` tool, which:
+Melissa never creates a category on her own initiative — only when you explicitly ask. Before creating, she:
 
-1. Infers 3–5 obvious keywords from the name (no need to spell them out).
-2. Appends `{ name, keywords }` to `categories.json` using an **atomic write** (temp file + rename) so the file can never be left corrupted.
-3. Rejects empty or duplicate names.
+1. **Checks for an existing same/similar category** (matching across accents and casing — e.g. she will not create "Others" when "Otros" exists, or "golf" when "Golf club" exists). If one already exists, she tells you and asks if that's the one you meant instead of creating a duplicate.
+2. **Asks for explicit confirmation** — "Voy a crear la categoría nueva [name] — ¿la creo?" — and waits for a yes.
+3. Only then calls `add_category`, which infers 3–5 keywords from the name, appends `{ name, keywords }` to `categories.json` using an **atomic write** (temp file + rename) so the file can never be left corrupted, and rejects empty or duplicate names.
 
 The new category is available in the **next conversation** (the MCP server reloads the list on restart; `melissa.js` reads it fresh on every message).
+
+> **Category integrity:** when adding or moving a task, the `tipo` must match an existing category **exactly** (accents and casing included). Melissa is forbidden from inventing a new category name through `add_task` / `update_task`, which previously caused silent duplicates like `Others` vs `Otros` and `golf club` vs `Golf club`.
 
 > **Note:** Categories are stored in their own file rather than in `config.json` on purpose — `config.json` holds API keys and tokens, so keeping category writes isolated means a bad write can never break the bot's credentials.
 
@@ -170,3 +172,23 @@ The new category is available in the **next conversation** (the MCP server reloa
 | 7:00 AM daily | Morning briefing |
 | 8:00 PM daily | Evening briefing |
 | 2:00 AM daily | Health check |
+
+---
+
+## Reliability guardrails
+
+The system prompt enforces strict rules so Melissa cannot *say* she did something without actually doing it:
+
+- **No hallucinated actions** — she may never report a task as marked done, moved, updated, or deleted unless the matching tool (`update_task` / `update_tasks` / `delete_task`) was actually called in that same turn. Describing an action in the future tense ("voy a moverla", "la elimino") without emitting the call is forbidden — she performs it now, then reports.
+- **Mandatory post-action verification** — after every `update_task`, `update_tasks`, or `delete_task`, she immediately re-reads with `list_tasks` and confirms the change is reflected (moved to the new category, gone after a delete, new status). If it isn't, the operation **failed** and she says so rather than reporting a false success.
+- **Category integrity** — task `tipo` values must match an existing category exactly; new categories require explicit user confirmation and a duplicate check (see [Adding a category](#adding-a-category)).
+
+---
+
+## Changelog
+
+### 2026-06-18 — task-action reliability fix
+- **Symptom:** Melissa would say "voy a moverla / la elimino" for a task but the change never landed — the move/delete was never executed (the `gpt-4.1-mini` model narrated intent without emitting the tool call), and nothing caught it because only *mark-done* had a verification step.
+- **Verified:** the data layer is healthy — task API writes return `200` and persist, unknown IDs return `404 {"ok":false,"error":"Task not found"}`, and the old double-number `list_tasks` ID bug is already fixed (single `[#rowId]`). Gmail scanning (`scan_gmail_for_actions`) runs correctly in production.
+- **Fixes:** extended the anti-hallucination + mandatory `list_tasks` verification to cover **move and delete** (not just mark-done); required explicit confirmation + similar-category check before `add_category`; forbade `add_task`/`update_task` from inventing categories.
+- **Data cleanup:** merged duplicate categories `Others` → `Otros` and `golf club` → `Golf club`.
