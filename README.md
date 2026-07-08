@@ -106,13 +106,23 @@ sudo systemctl restart whatsapp-bot
 sudo systemctl status whatsapp-bot
 ```
 
-To deploy a code change:
+To deploy a code change, push to GitHub and run the deploy script on the server:
 
 ```bash
-# From local machine
-scp -i ~/.ssh/id_ed25519 melissa.js opc@<VM_IP>:/tmp/melissa.js
-ssh -i ~/.ssh/id_ed25519 opc@<VM_IP> "sudo cp /tmp/melissa.js /root/whatsapp-bot/whatsapp-bot.js && sudo node --check /root/whatsapp-bot/whatsapp-bot.js && sudo systemctl restart whatsapp-bot"
+# From any machine with an authorized SSH key (~/.ssh/id_ed25519)
+ssh -i ~/.ssh/id_ed25519 opc@<VM_IP> 'sudo /root/deploy-melissa.sh [branch]'   # default branch: pause-morning-brief
 ```
+
+The script (`/root/deploy-melissa.sh` on the VM) pulls the branch via a read-only GitHub
+deploy key (`/root/.ssh/github_deploy`), copies the files into place
+(`melissa.js` → `/root/whatsapp-bot/whatsapp-bot.js`, `db.js`, `package.json`;
+`sheets-mcp.js` → `/root/.openclaw/skills/`), runs `npm install`, and restarts the service.
+
+Server facts worth remembering:
+- The VM is Oracle Linux 8 — native npm modules that need glibc ≥ 2.29 or Python ≥ 3.8 **will not build**. SQLite is provided by Node 22's built-in `node:sqlite` for this reason (no `better-sqlite3`).
+- `/root/whatsapp-bot/` is the runtime dir (not a git repo); the git checkout lives at `/root/melissa-bot/`.
+- MCP servers (`tasks-mcp.js`, `calendar-mcp.js`, `sheets-mcp.js`) live in `/root/.openclaw/skills/`.
+- SSH keys authorized for `opc`: Santiago's Mac and Windows PC (`windows-pc-melissa`).
 
 > **Note:** The production VM uses `config.json` instead of `.env`. The code supports both — if `TELEGRAM_TOKEN` is set in the environment, it uses env vars; otherwise it falls back to `config.json`.
 
