@@ -1,7 +1,7 @@
 const { DatabaseSync } = require('node:sqlite'); // built into Node >= 22.13 — no native compilation
 const crypto = require('crypto');
 
-const DB_PATH = '/root/whatsapp-bot/melissa.db';
+const DB_PATH = process.env.DB_PATH || '/root/whatsapp-bot/melissa.db';
 
 let _db;
 function getDb() {
@@ -86,7 +86,8 @@ function getDoneUsers() {
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = 'MELI-';
-  for (let i = 0; i < 5; i++) code += chars[crypto.randomInt(chars.length)];
+  // 8 chars over a 32-symbol alphabet ≈ 1.1e12 combinations (brute-force-proof).
+  for (let i = 0; i < 8; i++) code += chars[crypto.randomInt(chars.length)];
   return code;
 }
 

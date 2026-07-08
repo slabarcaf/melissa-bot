@@ -9,8 +9,8 @@ const os = require('os');
 const path = require('path');
 const db = require('./db');
 
-const CFG_PATH = '/root/whatsapp-bot/config.json';
-const CATS_PATH = '/root/whatsapp-bot/categories.json';
+const CFG_PATH = process.env.CFG_PATH || '/root/whatsapp-bot/config.json';
+const CATS_PATH = process.env.CATS_PATH || '/root/whatsapp-bot/categories.json';
 function buildCategoriesSection() {
   let cats;
   try { cats = JSON.parse(fs.readFileSync(CATS_PATH, 'utf8')); }
@@ -41,7 +41,7 @@ function buildCategoriesSectionForUser(user) {
   return `== CATEGORIES ==\n${names}\n${kws} | default → Otros`;
 }
 
-const USAGE_LOG = '/root/.openclaw/usage/usage-log.jsonl';
+const USAGE_LOG = process.env.USAGE_LOG || '/root/.openclaw/usage/usage-log.jsonl';
 function logUsage(inputTok, outputTok) {
   const entry = { ts: new Date().toISOString(), tool: 'llm', input: inputTok, output: outputTok };
   try { fs.appendFileSync(USAGE_LOG, JSON.stringify(entry) + '\n'); } catch {}
@@ -324,6 +324,16 @@ function filterTaskOutput(text, chatId, isSantiago) {
 
 // ── Onboarding state machine ──────────────────────────────────────────────────
 
+// F6: the preferred name is later spliced into the system prompt
+// (buildSystemPromptForUser) and user-facing cards. Take the first token, keep
+// only letters/digits (Unicode-aware) so it can't carry instructions or a [uid:]
+// tag, and cap the length. Sanitizing at capture covers every downstream use.
+function sanitizeName(raw) {
+  const first = (raw || '').trim().split(/\s+/)[0] || '';
+  const clean = first.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 30);
+  return clean || 'Amigo';
+}
+
 async function handleOnboarding(chatId, user, text) {
   const state = user.onboarding;
 
@@ -334,7 +344,7 @@ async function handleOnboarding(chatId, user, text) {
   }
 
   if (state === 'awaiting_name') {
-    const name = text.trim().split(/\s+/)[0]; // first word as preferred name
+    const name = sanitizeName(text); // first token, sanitized + length-capped (F6)
     db.updateUser(chatId, { preferred_name: name, onboarding: 'awaiting_tz' });
     const tzRef = '🌎 *Ciudad → Zona horaria*\nSantiago / Chile → America/Santiago\nSF / Los Angeles → America/Los_Angeles\nNueva York → America/New_York\nMadrid / España → Europe/Madrid\n...o escríbeme la zona IANA directamente.';
     await sendMessage(chatId, `¡Hola, ${name}! 👋\n\n¿En qué ciudad estás actualmente?\n(Necesito saber para mostrarte fechas y briefs a la hora correcta)\n\n${tzRef}`);
@@ -670,6 +680,39 @@ function getHistory(chatId) {
   return histories[chatId];
 }
 
+// F8: per-user sliding-window rate limit guarding the expensive OpenAI/Whisper
+// path — caps runaway cost from an abusive or compromised account. Overridable
+// via cfg.rate_limit_max / cfg.rate_limit_window_ms. Santiago is exempt.
+const rateWindows = new Map(); // chatId -> [timestamps within window]
+function allowMessage(chatId) {
+  const max   = cfg.rate_limit_max ?? 30;
+  const winMs = cfg.rate_limit_window_ms ?? 10 * 60 * 1000;
+  const now   = Date.now();
+  const arr   = (rateWindows.get(chatId) || []).filter(t => now - t < winMs);
+  if (arr.length >= max) { rateWindows.set(chatId, arr); return false; }
+  arr.push(now);
+  rateWindows.set(chatId, arr);
+  return true;
+}
+
+// F3: throttle invite-code brute forcing. After MAX failed /start claims within
+// WINDOW from one chat, ignore further claims from it for COOLDOWN. A brute-forcer
+// would need many distinct Telegram accounts to get around this.
+const inviteFails = new Map(); // chatId -> { count, first, blockedUntil }
+function inviteThrottled(chatId) {
+  const rec = inviteFails.get(chatId);
+  return !!(rec && rec.blockedUntil && Date.now() < rec.blockedUntil);
+}
+function recordInviteFail(chatId) {
+  const WINDOW = 10 * 60 * 1000, MAX = 5, COOLDOWN = 30 * 60 * 1000;
+  const now = Date.now();
+  let rec = inviteFails.get(chatId);
+  if (!rec || now - rec.first > WINDOW) rec = { count: 0, first: now, blockedUntil: 0 };
+  rec.count++;
+  if (rec.count >= MAX) rec.blockedUntil = now + COOLDOWN;
+  inviteFails.set(chatId, rec);
+}
+
 // ── Main LLM handler ──────────────────────────────────────────────────────────
 async function handleMessage(chatId, userText) {
   const user = db.getUser(chatId);
@@ -678,6 +721,13 @@ async function handleMessage(chatId, userText) {
   // Route to onboarding if not complete
   if (user.onboarding !== 'done') {
     await handleOnboarding(chatId, user, userText);
+    return;
+  }
+
+  // F8: rate-limit the expensive path (Santiago exempt).
+  const isSantiago = String(chatId) === String(cfg.telegram_chat_id);
+  if (!isSantiago && !allowMessage(chatId)) {
+    await sendMessage(chatId, '⏳ Has enviado muchos mensajes seguidos. Intenta de nuevo en unos minutos.');
     return;
   }
 
@@ -990,6 +1040,8 @@ async function poll() {
       // ── Invite claim: /start CODE ─────────────────────────────────────────
       if (text.startsWith('/start ')) {
         const code  = text.slice(7).trim();
+        // F3: during a brute-force cooldown, silently ignore claim attempts.
+        if (code && inviteThrottled(chatId)) { continue; }
         const label = code ? db.claimInviteCode(code, chatId) : null;
         if (code && label !== null) {
           // New users get Tasks + Finanzas only (email/calendar/networking stay Santiago-only)
@@ -997,6 +1049,7 @@ async function poll() {
           console.log(`[invite] ${fromName} (${chatId}) claimed code ${code} for "${label}"`);
           await handleOnboarding(chatId, db.getUser(chatId), '');
         } else if (code) {
+          recordInviteFail(chatId); // F3
           await sendMessage(chatId, '❌ Ese código no es válido o ya fue usado. Pide a quien te invitó un nuevo link.');
         }
         // If no code (plain /start), fall through to authorization check
@@ -1040,6 +1093,47 @@ async function pollLoop() {
   }
 }
 
+// ── Self-check (B1) ─────────────────────────────────────────────────────────
+// Non-polling validation of a deployment. Prints a PASS/FAIL report and exits.
+async function selfCheck() {
+  const results = [];
+  const add = (ok, name, detail) => results.push({ ok, name, detail });
+
+  try {
+    const u = cfg.telegram_chat_id ? db.getUser(cfg.telegram_chat_id) : null;
+    add(true, `SQLite DB (${process.env.DB_PATH || 'default path'})`, u ? 'seeded user present' : 'opened');
+  } catch (e) { add(false, 'SQLite DB', e.message); }
+
+  try { fs.appendFileSync(USAGE_LOG, ''); add(true, `Usage log writable`, USAGE_LOG); }
+  catch (e) { add(false, 'Usage log writable', `${USAGE_LOG}: ${e.message}`); }
+
+  add(!!botUsername, 'Telegram getMe', botUsername ? `@${botUsername}` : 'no username returned');
+
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: cfg.google_client_id, client_secret: cfg.google_client_secret,
+        refresh_token: cfg.google_refresh_token, grant_type: 'refresh_token' }) });
+    const j = await r.json();
+    add(!!j.access_token, 'Google OAuth refresh (personal)', j.access_token ? 'ok' : (j.error || 'no token'));
+  } catch (e) { add(false, 'Google OAuth refresh (personal)', e.message); }
+
+  const mcpAlive = taskServer?.exitCode === null && calendarServer?.exitCode === null && sheetsServer?.exitCode === null;
+  add(mcpAlive, 'MCP servers alive',
+    mcpAlive ? 'tasks/calendar/sheets up' : `tasks=${taskServer?.exitCode} cal=${calendarServer?.exitCode} sheets=${sheetsServer?.exitCode}`);
+
+  try {
+    await callMCP(taskServer, taskPending, 'list_tasks', { filter: 'today' });
+    add(true, 'MCP tasks responds', 'ok');
+  } catch (e) { add(false, 'MCP tasks responds', e.message); }
+
+  const failed = results.filter(r => !r.ok);
+  console.log('\n=== SELFCHECK REPORT ===');
+  for (const r of results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.detail ? ` — ${r.detail}` : ''}`);
+  console.log(`=== ${failed.length === 0 ? 'ALL PASS' : failed.length + ' FAILED'} ===\n`);
+  process.exit(failed.length === 0 ? 0 : 1);
+}
+
 // ── Startup ───────────────────────────────────────────────────────────────────
 async function start() {
   // ── SQLite: create tables + seed Santiago's user record ──────────────────
@@ -1056,15 +1150,16 @@ async function start() {
     });
   }
 
-  taskServer = startMCPServer('/root/.openclaw/skills/tasks-mcp.js',
+  const SKILLS_DIR = process.env.SKILLS_DIR || '/root/.openclaw/skills';
+  taskServer = startMCPServer(`${SKILLS_DIR}/tasks-mcp.js`,
     { TASK_API_BASE: cfg.task_api_base, TASK_API_SECRET: cfg.task_api_secret },
     taskPending, 'tasks');
-  calendarServer = startMCPServer('/root/.openclaw/skills/calendar-mcp.js',
+  calendarServer = startMCPServer(`${SKILLS_DIR}/calendar-mcp.js`,
     { GOOGLE_CLIENT_ID: cfg.google_client_id, GOOGLE_CLIENT_SECRET: cfg.google_client_secret,
       GOOGLE_REFRESH_TOKEN: cfg.google_refresh_token, GOOGLE_REFRESH_TOKEN_BERKELEY: cfg.google_refresh_token_berkeley,
       TIMEZONE: cfg.timezone || 'America/Los_Angeles' },
     calPending, 'calendar');
-  sheetsServer = startMCPServer('/root/.openclaw/skills/sheets-mcp.js',
+  sheetsServer = startMCPServer(`${SKILLS_DIR}/sheets-mcp.js`,
     { GOOGLE_CLIENT_ID: cfg.google_client_id, GOOGLE_CLIENT_SECRET: cfg.google_client_secret,
       GOOGLE_REFRESH_TOKEN_BERKELEY: cfg.google_refresh_token_berkeley,
       NETWORK_SHEET_ID: cfg.network_sheet_id,
@@ -1072,6 +1167,15 @@ async function start() {
     sheetsPending, 'sheets');
 
   await fetchBotInfo();
+
+  // B1: self-check mode — validate the runtime (DB, MCP, OAuth, file access,
+  // Telegram) WITHOUT starting the Telegram poll loop, so a new (e.g. non-root)
+  // deployment can be verified while the live service keeps polling. No cutover
+  // risk: SELFCHECK never consumes updates. Exits 0 (all pass) or 1 (any fail).
+  if (process.env.SELFCHECK === '1') {
+    await new Promise(r => setTimeout(r, 2000)); // let MCP children initialize
+    return selfCheck();
+  }
 
   console.log('✅ Bot started — polling Telegram (no webhook needed)');
   console.log('   Send any message to @Melizion_bot on Telegram');
