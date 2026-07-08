@@ -20,10 +20,8 @@ const CLIENT_SECRET          = process.env.GOOGLE_CLIENT_SECRET;
 const REFRESH_TOKEN_BERKELEY = process.env.GOOGLE_REFRESH_TOKEN_BERKELEY;
 const TIMEZONE               = process.env.TIMEZONE || "America/Los_Angeles";
 
-const FINANCE_SHEET_ID = process.env.FINANCE_SHEET_ID;
 const NETWORK_SHEET_ID = process.env.NETWORK_SHEET_ID;
-// Optional explicit tab names; default = first sheet (no prefix in the range).
-const FINANCE_TAB = process.env.FINANCE_TAB || "";
+// Optional explicit tab name; default = first sheet (no prefix in the range).
 const NETWORK_TAB = process.env.NETWORK_TAB || "";
 
 const ACCOUNT = "berkeley";
@@ -158,60 +156,6 @@ function parseDeadline(raw) {
   return null;
 }
 
-// ── Finance tools ─────────────────────────────────────────────────────────────
-
-function normDirection(direction) {
-  const d = (direction || "").toLowerCase();
-  if (/(debo|i owe|yo (le )?debo|pagar yo|owe)/.test(d) && !/me deb/.test(d)) return "Debo yo";
-  if (/(me deben|they owe|owes me|me debe)/.test(d)) return "Me deben";
-  // Fallback on common short forms
-  if (d.includes("debo")) return "Debo yo";
-  return "Me deben";
-}
-
-async function add_debt({ name, reason = "", amount, currency = "USD", direction }) {
-  if (!name || amount == null) return "Falta el nombre o el monto.";
-  const today = todayISO();
-  const dir = normDirection(direction);
-  const row = [name, reason, today, amount, (currency || "USD").toUpperCase(), dir, "Por pagar", today];
-  await sheetAppend(FINANCE_SHEET_ID, FINANCE_TAB, "A:H", row);
-  const verbo = dir === "Debo yo" ? "Le debes" : "Te debe";
-  return `✅ Registrado en Finanzas: ${verbo} ${amount} ${row[4]} — ${name}${reason ? " (" + reason + ")" : ""}. Estado: Por pagar.`;
-}
-
-async function list_debts({ filter = "pending" } = {}) {
-  const rows = await sheetGet(FINANCE_SHEET_ID, FINANCE_TAB, "A2:H");
-  const out = [];
-  rows.forEach((r, i) => {
-    const [name, reason, created, amount, currency, direction, status] = r;
-    if (!name) return;
-    const rowNum = i + 2; // header is row 1
-    const st = (status || "").toLowerCase();
-    const dir = (direction || "");
-    const paid = st.includes("pagad");
-    const passes =
-      filter === "all" ? true :
-      filter === "paid" ? paid :
-      filter === "pending" ? !paid :
-      filter === "me_deben" ? (!paid && /me deben/i.test(dir)) :
-      filter === "debo_yo" ? (!paid && /debo/i.test(dir)) :
-      !paid;
-    if (!passes) return;
-    out.push(`- ${name} — ${amount || "?"} ${currency || ""} — ${dir}${reason ? " — " + reason : ""} — ${status || "Por pagar"} [#${rowNum}]`);
-  });
-  if (out.length === 0) return `Sin deudas (${filter}).`;
-  return `💰 Deudas (${filter}):\n` + out.join("\n");
-}
-
-async function update_debt_status({ row, status }) {
-  if (!row) return "Falta el numero de fila [#].";
-  const st = (status || "").toLowerCase();
-  const newStatus = st.includes("pag") ? "Pagado" : "Por pagar";
-  const today = todayISO();
-  await sheetUpdate(FINANCE_SHEET_ID, FINANCE_TAB, `G${row}:H${row}`, [[newStatus, today]]);
-  return `✅ Deuda fila ${row} → ${newStatus} (${today}).`;
-}
-
 // ── Networking tools ──────────────────────────────────────────────────────────
 
 // Find the row to write a new contact: end of the contiguous block of names
@@ -274,44 +218,10 @@ async function update_contact({ row, next_step, status, next_step_deadline, last
 
 // ── MCP tool definitions ──────────────────────────────────────────────────────
 
+// Finance tools (add_debt, list_debts, update_debt_status) removed:
+// they are now handled directly in melissa.js via SQLite (db.js) for per-user isolation.
+
 const TOOLS = [
-  {
-    name: "add_debt",
-    description: "Register a debt in the Finanzas ledger. Use when user says: le debo, me debe, alguien me debe, deuda, anota que debo, owe, debt. Confirm name + amount + currency + direction with the user before calling.",
-    inputSchema: {
-      type: "object",
-      required: ["name", "amount", "direction"],
-      properties: {
-        name:      { type: "string", description: "Person's name" },
-        reason:    { type: "string", description: "Free-text description of why (e.g. asado, paseo, fiesta)" },
-        amount:    { type: "number", description: "Amount owed" },
-        currency:  { type: "string", description: "Currency code, e.g. USD, CLP (default USD)" },
-        direction: { type: "string", description: "'Me deben' (they owe Santiago) or 'Debo yo' (Santiago owes them)" }
-      }
-    }
-  },
-  {
-    name: "list_debts",
-    description: "List debts from the Finanzas ledger. Each line ends with [#N] which is the spreadsheet row id — use it for update_debt_status. NEVER use list position as the row id.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filter: { type: "string", enum: ["pending", "paid", "me_deben", "debo_yo", "all"], description: "Default 'pending'." }
-      }
-    }
-  },
-  {
-    name: "update_debt_status",
-    description: "Mark a debt paid or pending. ALWAYS call list_debts first to get the [#N] row id. Sets the Status Changed date to today automatically.",
-    inputSchema: {
-      type: "object",
-      required: ["row", "status"],
-      properties: {
-        row:    { type: "number", description: "Spreadsheet row id from list_debts [#N]" },
-        status: { type: "string", description: "'Pagado' (paid) or 'Por pagar' (pending)" }
-      }
-    }
-  },
   {
     name: "add_contact",
     description: "Add a person to the Networking tracker. Use when user says: agrega a networking, conoci a, agrega contacto, met someone, add to networking. Confirm details before calling. For 'talk again in N months/weeks' compute next_step_deadline from today.",
@@ -358,7 +268,7 @@ const TOOLS = [
   }
 ];
 
-const HANDLERS = { add_debt, list_debts, update_debt_status, add_contact, list_contacts, update_contact };
+const HANDLERS = { add_contact, list_contacts, update_contact };
 
 // ── MCP JSON-RPC server over stdio ────────────────────────────────────────────
 
