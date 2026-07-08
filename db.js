@@ -92,6 +92,21 @@ function getDoneUsers() {
   return getDb().prepare("SELECT * FROM users WHERE onboarding = 'done'").all();
 }
 
+function listUsers() {
+  return getDb().prepare('SELECT * FROM users ORDER BY created_at').all();
+}
+
+// Removes the account and their debts. Their [uid:]-tagged tasks stay in the
+// shared Task Dashboard (invisible to everyone but never listed again).
+function deleteUser(chatId) {
+  const db = getDb();
+  const user = db.prepare('SELECT * FROM users WHERE chat_id = ?').get(chatId);
+  if (!user) return null;
+  const debts = db.prepare('DELETE FROM debts WHERE user_id = ?').run(chatId);
+  db.prepare('DELETE FROM users WHERE chat_id = ?').run(chatId);
+  return { user, debtsDeleted: debts.changes };
+}
+
 // ── Invite codes ──────────────────────────────────────────────────────────────
 
 function generateCode() {
@@ -173,7 +188,7 @@ function updateDebt(userId, id, status) {
 }
 
 module.exports = {
-  migrate, getUser, createUser, updateUser, getDoneUsers,
+  migrate, getUser, createUser, updateUser, getDoneUsers, listUsers, deleteUser,
   createInviteCode, claimInviteCode,
   addDebt, listDebts, updateDebt,
 };
