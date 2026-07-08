@@ -1,11 +1,11 @@
-const Database = require('better-sqlite3');
-const crypto   = require('crypto');
+const { DatabaseSync } = require('node:sqlite'); // built into Node >= 22.13 — no native compilation
+const crypto = require('crypto');
 
 const DB_PATH = '/root/whatsapp-bot/melissa.db';
 
 let _db;
 function getDb() {
-  if (!_db) _db = new Database(DB_PATH);
+  if (!_db) _db = new DatabaseSync(DB_PATH);
   return _db;
 }
 
