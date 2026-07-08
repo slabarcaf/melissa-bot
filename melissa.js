@@ -123,6 +123,7 @@ The 💰 DEUDAS PENDIENTES and 🤝 NETWORKING sections appear ONLY in briefings
 Tasks must be grouped by category. Each task line from the tool starts with [Category] — use this tag to determine the category header, then strip it from the displayed task text. Each category header appears exactly once — merge ALL tasks of the same category under one header regardless of due date or section. The tool may return tasks split into ⏰ Vencidas and 📅 Para hoy sub-sections — ignore those dividers entirely when grouping for display: treat the full task list as one flat pool and group ONLY by [Category]. If a category has no tasks, omit it. Never output a paragraph of tasks separated by commas or semicolons.
 🔴 appears ONLY on tasks that literally have "🔴 " at the start of the task line in the tool output — do NOT add 🔴 to tasks that don't have it, even if they are overdue.
 Calendar empty-state: for 📅 AGENDA HOY say "Sin eventos hoy" if no events. For 📅 AGENDA DE MAÑANA say "Sin eventos mañana" if no events. Never say "próximos N días".
+DATE DISPLAY — whenever you show a task due date (task lists, briefs, confirmations, reminders), format it as day-month abbreviated with a dash: "8-Jul", "15-Ene" (month abbreviation in the user's language). Add the year ONLY when it is not the current year (e.g. "15-Ene-2027"). Never show ambiguous numeric dates like 8/7 or 07/08.
 
 == TASK LISTS ==
 ALWAYS call list_tasks immediately when the user mentions tasks — NEVER ask clarifying questions, NEVER summarize, NEVER say there are no tasks without calling the tool first.
@@ -130,8 +131,8 @@ Default filter: "overdue_and_today". Use "overdue_and_today" for morning briefs 
 Triggers: tareas, tasks, qué tengo, lista, muéstrame, enviar tareas, mis tareas, pendientes, show tasks, dame mis tareas → call list_tasks NOW.
 After the tool returns: each line contains [#N] — keep those IDs in memory for update_task/delete_task, but NEVER show [#N] in your reply to the user. This rule applies to all task displays including cron briefings.
 Format each task like this:
-  🔴 Nombre de tarea — Lun 5 may   ← tarea importante (🔴 ya viene en el output)
-  - Nombre de tarea — Lun 5 may    ← tarea normal
+  🔴 Nombre de tarea — 5-May   ← tarea importante (🔴 ya viene en el output)
+  - Nombre de tarea — 5-May    ← tarea normal
 Rules: always show the date from the tool output | 🔴 ONLY if it literally appears at the start of the task line in the tool output — overdue tasks are NOT priority by default, NEVER add 🔴 yourself | preserve sort order (most overdue first, today's tasks after) | do NOT skip tasks | do NOT say "tienes X tareas".
 NEVER use list position as taskId — always use the [#N] number from the tool output.
 
@@ -198,7 +199,12 @@ Reference table:
 May 2026 offsets (SF=PDT, SCL=CLT): Chile is 4 hours AHEAD of SF.
   7:00 AM SCL = 3:00 AM SF  |  8:00 PM SCL = 4:00 PM SF
 
-If Santiago says he is traveling or changing city/country → call update_timezone with the matching timezone string. Act immediately, no confirmation needed. Confirm what timezone was set and that briefs were rescheduled.`;
+If Santiago says he is traveling or changing city/country → call update_timezone with the matching timezone string. Act immediately, no confirmation needed. Confirm what timezone was set and that briefs were rescheduled.
+
+== BRIEFS ==
+Los briefs de la mañana/noche se envían automáticamente a las horas que el usuario configuró.
+Si el usuario pide cambiarlos de hora, quitar uno o desactivarlos ("mándame el brief a las 8", "ya no quiero el de la noche", "stop the morning brief") → llama update_brief_times(morning, evening) con formato HH:MM 24h; string vacío "" desactiva ese brief. Solo pasa el campo que cambia.
+Recuérdale al usuario cuando venga al caso que puede escribirte a cualquier hora — los briefs son solo resúmenes programados.`;
 
 // ── Multi-user helpers ────────────────────────────────────────────────────────
 
@@ -219,19 +225,43 @@ const PRESET_CATEGORIES = [
   { name: 'Otros',         keywords: [] },
 ];
 
+// City/country → IANA zone. Returns { tz, matched } — matched:false means we're
+// guessing (Americas default) and onboarding should ask the user to confirm.
+// Order matters: country names ending in "la" (Venezuela, Guatemala) must be
+// tested before the generic \bla\b → Los Angeles rule.
+const CITY_TZ_TABLE = [
+  [/santiago|chile/,                                        'America/Santiago'],
+  [/bolivia|la paz/,                                        'America/La_Paz'],
+  [/venezuela|caracas/,                                     'America/Caracas'],
+  [/guatemala/,                                             'America/Guatemala'],
+  [/bogot|colombia|medell|barranquilla/,                    'America/Bogota'],
+  [/lima|per[uú]\b/,                                        'America/Lima'],
+  [/quito|guayaquil|ecuador/,                               'America/Guayaquil'],
+  [/montevideo|uruguay/,                                    'America/Montevideo'],
+  [/asunci|paraguay/,                                       'America/Asuncion'],
+  [/buenos aires|argentina|c[oó]rdoba|mendoza/,             'America/Argentina/Buenos_Aires'],
+  [/s[aã]o paulo|sao paulo|brasil|brazil|rio de janeiro/,   'America/Sao_Paulo'],
+  [/panam/,                                                 'America/Panama'],
+  [/costa rica/,                                            'America/Costa_Rica'],
+  [/honduras|tegucigalpa/,                                  'America/Tegucigalpa'],
+  [/el salvador/,                                           'America/El_Salvador'],
+  [/nicaragua|managua/,                                     'America/Managua'],
+  [/m[eé]xico|mexico|cdmx|guadalajara|monterrey/,           'America/Mexico_City'],
+  [/miami|florida|orlando|tampa/,                           'America/New_York'],
+  [/new york|nyc|\bny\b|east coast|boston|washington|philadelphia|atlanta|toronto|montreal/, 'America/New_York'],
+  [/chicago|illinois|houston|dallas|austin|texas/,          'America/Chicago'],
+  [/denver|colorado|salt lake/,                             'America/Denver'],
+  [/phoenix|arizona/,                                       'America/Phoenix'],
+  [/madrid|barcelona|spain|espa[ñn]a/,                      'Europe/Madrid'],
+  [/london|londres|\buk\b|england/,                         'Europe/London'],
+  [/\bsf\b|san francisco|los angeles|california|berkeley|oakland|san diego|seattle|portland|\bla\b/, 'America/Los_Angeles'],
+];
+
 function parseCityToTimezone(text) {
-  const t = text.toLowerCase();
-  if (/santiago|chile/.test(t))              return 'America/Santiago';
-  if (/sf|san francisco|los angeles|california|la\b/.test(t)) return 'America/Los_Angeles';
-  if (/new york|nyc|\bny\b|east coast/.test(t)) return 'America/New_York';
-  if (/madrid|spain|españa/.test(t))         return 'Europe/Madrid';
-  if (/london|uk\b|england/.test(t))         return 'Europe/London';
-  if (/mexico|cdmx/.test(t))                 return 'America/Mexico_City';
-  if (/buenos aires|argentina/.test(t))      return 'America/Argentina/Buenos_Aires';
-  if (/miami|florida/.test(t))               return 'America/New_York';
-  if (/chicago|illinois/.test(t))            return 'America/Chicago';
-  if (/^[A-Za-z]+\/[A-Za-z_\/]+$/.test(text.trim())) return text.trim();
-  return 'America/Los_Angeles';
+  const t = (text || '').toLowerCase();
+  for (const [re, tz] of CITY_TZ_TABLE) if (re.test(t)) return { tz, matched: true };
+  if (/^[A-Za-z]+\/[A-Za-z_\/]+$/.test((text || '').trim())) return { tz: text.trim(), matched: true };
+  return { tz: 'America/Los_Angeles', matched: false };
 }
 
 function parseCategorySelection(text) {
@@ -243,33 +273,117 @@ function parseCategorySelection(text) {
   return PRESET_CATEGORIES.filter(c => text.toLowerCase().includes(c.name.toLowerCase()));
 }
 
-function buildTutorialCard(name) {
-  return `¡Todo listo, ${name}! 🎉 Aquí va un resumen rápido de lo que puedes pedirme:
+// ── Onboarding v2 messages (ES/EN) ────────────────────────────────────────────
+// First message is bilingual (language not chosen yet); everything after uses
+// the user's picked language. Tutorial is split into small chunks on purpose —
+// one idea per message, each ending with something to reply to.
 
-📋 *TAREAS*
-Para agregar una tarea necesito:
-• Qué hay que hacer (descripción)
-• Fecha límite (hoy, mañana, el viernes, 15 de julio…)
-• Categoría (te confirmo antes de guardar)
+const OB_WELCOME = `¡Hola! Soy *Sydney* 👋 Tu asistente personal. / Hi! I'm *Sydney* 👋 Your personal assistant.
 
-Ej: _"agrega tarea: revisar el contrato, para el jueves"_
+🎤 Puedes escribirme por texto o mandarme *notas de voz*, como prefieras. / You can text me or send me *voice notes*, whatever's easier.
 
-💰 *DEUDAS*
-Para registrar una deuda necesito:
-• Nombre de la persona
-• Monto y moneda (pesos, dólares, euros…)
-• Dirección: ¿te deben a ti o tú debes?
+Primero lo primero — ¿en qué idioma quieres que hablemos? / First things first — which language should we use?
+👉 *español* / *english*`;
 
-Ej: _"Juan me debe 50 dólares por un asado"_
-Ej: _"le debo a María 200 pesos"_
+const OB = {
+  es: {
+    askName: () => `Perfecto, español 🙌\n\n¿Cómo quieres que te llame?`,
+    askLocation: (n) => `¡Mucho gusto, ${n}! 👋\n\n¿En qué ciudad y país estás?\n(Así te muestro fechas y recordatorios en tu hora local)`,
+    tzConfirm: (tz) => `Mmm, no ubico bien esa ciudad 😅 Voy a asumir la zona horaria *${tz}*.\n\n¿Está bien? (responde *sí*, o dime otra ciudad)`,
+    tzKept: (tz) => `Ok, dejo *${tz}* por ahora. Si no es la correcta, más adelante solo dime en qué ciudad estás y la ajusto.`,
+    askBriefs: (tz) => `✅ Zona horaria: *${tz}*\n\nAhora — ¿quieres que te mande *briefs*? Son resúmenes con tus tareas y pendientes del día.\n\nNormalmente recomendamos dos: uno en la mañana (7:00 am) y uno en la noche (8:00 pm). Pero dime tú: ¿cuántos quieres y a qué hora?`,
+    briefsSet: (m, e) => {
+      let s;
+      if (m && e)      s = `✅ Listo: brief de la mañana a las *${m}* y de la noche a las *${e}*.`;
+      else if (m)      s = `✅ Listo: un brief diario en la mañana a las *${m}*.`;
+      else if (e)      s = `✅ Listo: un brief diario en la noche a las *${e}*.`;
+      else             s = `✅ Ok, sin briefs programados. Si cambias de opinión, solo pídemelo.`;
+      return s + `\n\nY ojo 👀 — no soy solo briefs: escríbeme lo que necesites *a cualquier hora del día* y te respondo al momento.`;
+    },
+    tutorialTasks: () => `Te muestro rápido cómo funciono — parte 1 de 2 📋\n\n*TAREAS*\nPara agregar una tarea solo dime qué hay que hacer y para cuándo (hoy, mañana, el viernes, 15-jul…). Yo te confirmo la categoría antes de guardar.\n\nEj: _"agrega tarea: revisar el contrato, para el jueves"_\n\nY cuando la termines, dímelo en palabras simples: _"ya la hice"_, _"listo lo del contrato"_ ✅\n\n¿Alguna duda? Respóndeme lo que sea y seguimos.`,
+    tutorialDebts: () => `Parte 2 de 2 💰\n\n*DEUDAS*\nTambién llevo el registro de quién te debe y a quién le debes.\n\nEj: _"Juan me debe 50 dólares por un asado"_\nEj: _"le debo a María 200 pesos"_\n\nY cuando se pague: _"ya le pagué a Juan"_ o _"María ya me pagó"_ ✅\n\n¿Todo claro? Respóndeme y vamos con lo último.`,
+    askCats: (list) => `Último paso 📂\n\n¿Qué categorías quieres usar para organizar tus tareas?\n\n${list}\n\nEscribe los números separados por coma (ej: 1, 3, 5) o los nombres.`,
+    askCustomCats: (names) => `✅ Categorías guardadas: *${names}*.\n\n¿Quieres agregar alguna categoría tuya? Dime los nombres separados por coma (ej: _Viajes, Iglesia_) — o responde *no*.`,
+    customAdded: (names) => `✅ Agregué: *${names}*.`,
+    done: (n) => `¡Todo listo, ${n}! 🎉 Cuando quieras, empieza — por texto o nota de voz 🎤`,
+  },
+  en: {
+    askName: () => `Great, English it is 🙌\n\nWhat should I call you?`,
+    askLocation: (n) => `Nice to meet you, ${n}! 👋\n\nLet me know your city and country.\n(That way I show dates and reminders in your local time)`,
+    tzConfirm: (tz) => `Hmm, I don't recognize that city 😅 I'll assume the *${tz}* timezone.\n\nIs that right? (reply *yes*, or tell me another city)`,
+    tzKept: (tz) => `Ok, I'll keep *${tz}* for now. If it's not right, just tell me your city later and I'll fix it.`,
+    askBriefs: (tz) => `✅ Timezone: *${tz}*\n\nNow — do you want me to send you *briefs*? They're summaries of your tasks and pending items for the day.\n\nWe usually recommend two: one in the morning (7:00 am) and one at night (8:00 pm). But you tell me: how many do you want, and at what times?`,
+    briefsSet: (m, e) => {
+      let s;
+      if (m && e)      s = `✅ Done: morning brief at *${m}* and evening brief at *${e}*.`;
+      else if (m)      s = `✅ Done: one daily brief in the morning at *${m}*.`;
+      else if (e)      s = `✅ Done: one daily brief in the evening at *${e}*.`;
+      else             s = `✅ Ok, no scheduled briefs. If you change your mind, just ask.`;
+      return s + `\n\nAnd heads up 👀 — I'm not just briefs: message me whatever you need *at any time of day* and I'll answer right away.`;
+    },
+    tutorialTasks: () => `Quick tour of how I work — part 1 of 2 📋\n\n*TASKS*\nTo add a task just tell me what needs to get done and by when (today, tomorrow, Friday, 15-Jul…). I'll confirm the category before saving.\n\nE.g.: _"add task: review the contract, due Thursday"_\n\nAnd when you finish it, just say so in plain words: _"done"_, _"finished the contract thing"_ ✅\n\nAny questions? Reply anything and we'll keep going.`,
+    tutorialDebts: () => `Part 2 of 2 💰\n\n*DEBTS*\nI also keep track of who owes you and who you owe.\n\nE.g.: _"Juan owes me 50 dollars for a barbecue"_\nE.g.: _"I owe María 200 pesos"_\n\nAnd when it's paid: _"I paid Juan back"_ or _"María paid me"_ ✅\n\nAll clear? Reply and we'll do the last step.`,
+    askCats: (list) => `Last step 📂\n\nWhich categories do you want to use to organize your tasks?\n\n${list}\n\nType the numbers separated by commas (e.g. 1, 3, 5) or the names.`,
+    askCustomCats: (names) => `✅ Categories saved: *${names}*.\n\nWant to add categories of your own? Tell me the names separated by commas (e.g. _Travel, Church_) — or reply *no*.`,
+    customAdded: (names) => `✅ Added: *${names}*.`,
+    done: (n) => `All set, ${n}! 🎉 Start whenever you want — text or voice note 🎤`,
+  },
+};
 
-✅ *MARCAR COMO LISTO O ELIMINAR*
-No necesitas números ni IDs, solo dime en palabras simples:
-• Tarea lista → _"ya la hice"_, _"listo"_, _"terminé lo de revisar el contrato"_
-• Eliminar una tarea → _"elimina la tarea de revisar el contrato"_ (te confirmo antes de borrarla)
-• Deuda pagada → _"ya le pagué a Juan"_ o _"María ya me pagó"_
+function parseLanguageChoice(text) {
+  const t = (text || '').toLowerCase();
+  if (/(espa|spanish|castellano)/.test(t)) return 'es';
+  if (/(english|ingl[eé]s|\ben\b|\beng\b)/.test(t)) return 'en';
+  return 'es';
+}
 
-Cuando quieras, ¡empieza!`;
+// Parse the brief-schedule answer: "7am y 8pm", "solo en la mañana a las 7:30",
+// "los dos", "no quiero", "a las 8 de la noche" → { morning, evening } as HH:MM
+// (empty string = that brief off). Unparseable answers keep the 07:00/20:00
+// defaults — the confirmation message always states what was actually set.
+function parseBriefTimes(text) {
+  const t = (text || '').toLowerCase();
+  if (!/\d/.test(t) && /\b(no|ninguno|ningun[ao]|none|nada|nope)\b/.test(t)) return { morning: '', evening: '' };
+
+  const found = [];
+  const re = /(\d{1,2})(?::(\d{2}))?(?:\s*([ap])\.?m\.?)?/g;
+  let m;
+  while ((m = re.exec(t)) && found.length < 2) {
+    let h = parseInt(m[1], 10);
+    const min = m[2] ? parseInt(m[2], 10) : 0;
+    const mer = m[3] || '';
+    if (h > 23 || min > 59) continue;
+    if (mer === 'p' && h < 12) h += 12;
+    if (mer === 'a' && h === 12) h = 0;
+    found.push({ h, min, explicit: !!mer || h > 12 });
+  }
+
+  const mentionsMorning = /(ma[ñn]ana|morning|matutin|am\b)/.test(t);
+  const mentionsEvening = /(noche|night|evening|tarde|vespertin|diario|pm\b)/.test(t);
+  let wantMorning = true, wantEvening = true;
+  const onlyOne = /(solo|s[oó]lo|only|just|\buno\b|\bone\b|un brief|1 brief)/.test(t);
+  if (onlyOne) {
+    if (mentionsMorning && !mentionsEvening) wantEvening = false;
+    else if (mentionsEvening && !mentionsMorning) wantMorning = false;
+    else if (found.length === 1) { wantEvening = found[0].h >= 12; wantMorning = !wantEvening; }
+  }
+
+  const fmt = (x) => `${String(x.h).padStart(2, '0')}:${String(x.min).padStart(2, '0')}`;
+  let morning = wantMorning ? '07:00' : '';
+  let evening = wantEvening ? '20:00' : '';
+  if (found.length === 1) {
+    const x = { ...found[0] };
+    if (wantMorning && !wantEvening) morning = fmt(x);
+    else if (wantEvening && !wantMorning) { if (x.h < 12 && !x.explicit) x.h += 12; evening = fmt(x); }
+    else if (x.h < 12) morning = fmt(x);
+    else evening = fmt(x);
+  } else if (found.length >= 2) {
+    let [a, b] = found.map(x => ({ ...x }));
+    if (a.h > b.h) [a, b] = [b, a];
+    if (wantMorning) morning = fmt(a);
+    if (wantEvening) { if (b.h < 12 && !b.explicit) b.h += 12; evening = fmt(b); }
+  }
+  return { morning, evening };
 }
 
 function filterToolsForUser(user) {
@@ -336,36 +450,111 @@ function sanitizeName(raw) {
 }
 
 async function handleOnboarding(chatId, user, text) {
-  const state = user.onboarding;
+  let state = user.onboarding;
+  if (state === 'awaiting_tz') state = 'awaiting_location'; // legacy pre-v2 state
+
+  const lang = user.language === 'en' ? 'en' : 'es';
+  const T = OB[lang];
 
   if (state === 'new') {
-    db.updateUser(chatId, { onboarding: 'awaiting_name' });
-    await sendMessage(chatId, '¡Hola! Soy Sydney 👋 Tu asistente personal.\n\n¿Cómo quieres que te llame?');
+    db.updateUser(chatId, { onboarding: 'awaiting_language' });
+    await sendMessage(chatId, OB_WELCOME);
+    return;
+  }
+
+  if (state === 'awaiting_language') {
+    const choice = parseLanguageChoice(text);
+    db.updateUser(chatId, { language: choice, onboarding: 'awaiting_name' });
+    await sendMessage(chatId, OB[choice].askName());
     return;
   }
 
   if (state === 'awaiting_name') {
     const name = sanitizeName(text); // first token, sanitized + length-capped (F6)
-    db.updateUser(chatId, { preferred_name: name, onboarding: 'awaiting_tz' });
-    const tzRef = '🌎 *Ciudad → Zona horaria*\nSantiago / Chile → America/Santiago\nSF / Los Angeles → America/Los_Angeles\nNueva York → America/New_York\nMadrid / España → Europe/Madrid\n...o escríbeme la zona IANA directamente.';
-    await sendMessage(chatId, `¡Hola, ${name}! 👋\n\n¿En qué ciudad estás actualmente?\n(Necesito saber para mostrarte fechas y briefs a la hora correcta)\n\n${tzRef}`);
+    db.updateUser(chatId, { preferred_name: name, onboarding: 'awaiting_location' });
+    await sendMessage(chatId, T.askLocation(name));
     return;
   }
 
-  if (state === 'awaiting_tz') {
-    const tz = parseCityToTimezone(text);
-    db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_cats' });
+  if (state === 'awaiting_location') {
+    const { tz, matched } = parseCityToTimezone(text);
+    if (matched) {
+      db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_briefs' });
+      await sendMessage(chatId, T.askBriefs(tz));
+    } else {
+      // Unrecognized city: store the Americas guess and ask before moving on.
+      db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_tz_confirm' });
+      await sendMessage(chatId, T.tzConfirm(tz));
+    }
+    return;
+  }
+
+  if (state === 'awaiting_tz_confirm') {
+    const yes = /^(s[ií]|yes|ok|dale|correcto|claro|sure|yep|yeah)\b/i.test((text || '').trim());
+    let tz = user.timezone;
+    if (!yes) {
+      const retry = parseCityToTimezone(text);
+      if (retry.matched) tz = retry.tz;
+      else await sendMessage(chatId, T.tzKept(tz)); // one retry, then keep the guess
+    }
+    db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_briefs' });
+    await sendMessage(chatId, T.askBriefs(tz));
+    return;
+  }
+
+  if (state === 'awaiting_briefs') {
+    const { morning, evening } = parseBriefTimes(text);
+    db.updateUser(chatId, { brief_morning: morning, brief_evening: evening, onboarding: 'awaiting_tasks_ack' });
+    await sendMessage(chatId, T.briefsSet(morning, evening));
+    await sendMessage(chatId, T.tutorialTasks());
+    return;
+  }
+
+  if (state === 'awaiting_tasks_ack') { // any reply advances the tutorial
+    db.updateUser(chatId, { onboarding: 'awaiting_debts_ack' });
+    await sendMessage(chatId, T.tutorialDebts());
+    return;
+  }
+
+  if (state === 'awaiting_debts_ack') {
+    db.updateUser(chatId, { onboarding: 'awaiting_cats' });
     const catList = PRESET_CATEGORIES.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
-    await sendMessage(chatId, `✅ Zona horaria: *${tz}*\n\n¿Qué categorías quieres usar para organizar tus tareas?\n\n${catList}\n\nEscribe los números separados por coma (ej: 1, 3, 5) o los nombres. Puedes agregar más después.`);
+    await sendMessage(chatId, T.askCats(catList));
     return;
   }
 
   if (state === 'awaiting_cats') {
     const selected = parseCategorySelection(text);
     const cats = selected.length > 0 ? selected : [PRESET_CATEGORIES[0], PRESET_CATEGORIES[PRESET_CATEGORIES.length - 1]];
-    db.updateUser(chatId, { categories: JSON.stringify(cats), onboarding: 'done' });
-    const name = (db.getUser(chatId) || {}).preferred_name || 'tú';
-    await sendMessage(chatId, buildTutorialCard(name));
+    db.updateUser(chatId, { categories: JSON.stringify(cats), onboarding: 'awaiting_custom_cat' });
+    await sendMessage(chatId, T.askCustomCats(cats.map(c => c.name).join(', ')));
+    return;
+  }
+
+  if (state === 'awaiting_custom_cat') {
+    const answer = (text || '').trim();
+    if (!/^(no+|nope|nel|n)\.?$/i.test(answer)) {
+      const fresh = db.getUser(chatId) || {};
+      const cats = JSON.parse(fresh.categories || '[]');
+      const existing = new Set([...cats, ...PRESET_CATEGORIES].map(c => c.name.toLowerCase()));
+      const added = [];
+      for (const raw of answer.split(',')) {
+        const catName = raw.replace(/[^\p{L}\p{N} ]/gu, '').trim().slice(0, 30);
+        if (!catName || existing.has(catName.toLowerCase())) continue;
+        if (/^(s[ií]|yes|ok|dale|claro|sure)$/i.test(catName)) continue; // filler, not a category
+        cats.push({ name: catName, keywords: [] });
+        existing.add(catName.toLowerCase());
+        added.push(catName);
+      }
+      if (added.length) {
+        db.updateUser(chatId, { categories: JSON.stringify(cats) });
+        await sendMessage(chatId, T.customAdded(added.join(', ')));
+      }
+    }
+    db.updateUser(chatId, { onboarding: 'done' });
+    scheduleCrons(); // user is now 'done' → give them their brief crons
+    const name = (db.getUser(chatId) || {}).preferred_name || (lang === 'en' ? 'you' : 'tú');
+    await sendMessage(chatId, T.done(name));
     return;
   }
 }
@@ -412,6 +601,7 @@ const TOOLS = [
   { type:'function', function:{ name:'list_calendar_events', description:'List upcoming calendar events', parameters:{ type:'object', properties:{ days_ahead:{type:'number'} } } } },
   { type:'function', function:{ name:'scan_gmail_for_actions', description:'Scan Gmail for actionable emails', parameters:{ type:'object', properties:{ account:{type:'string', enum:['personal','berkeley','all']}, max_emails:{type:'number'}, newer_than_days:{type:'number'} } } } },
   { type:'function', function:{ name:'update_timezone', description:'Update the bot timezone and reschedule morning/evening briefs. Call when user says they are traveling or in a different city/country.', parameters:{ type:'object', properties:{ timezone:{type:'string', description:'IANA timezone string e.g. America/Santiago'} }, required:['timezone'] } } },
+  { type:'function', function:{ name:'update_brief_times', description:'Change when the user receives their morning/evening briefs, or disable one. Call when user asks to change brief times, stop receiving briefs, or move their daily summary to another hour.', parameters:{ type:'object', properties:{ morning:{type:'string', description:'HH:MM 24h, or empty string to disable the morning brief'}, evening:{type:'string', description:'HH:MM 24h, or empty string to disable the evening brief'} } } } },
   { type:'function', function:{ name:'lookup_google_contact', description:'Search Google Contacts by name to find email address. Call before adding attendees to a calendar event. Always confirm result with user before using.', parameters:{ type:'object', properties:{ name:{type:'string'} }, required:['name'] } } },
   { type:'function', function:{ name:'add_category', description:'Permanently add a new task category. Call when user says agrega la categoría or crea una categoría. Infer keywords silently.', parameters:{ type:'object', properties:{ name:{type:'string'}, keywords:{type:'array',items:{type:'string'}} }, required:['name'] } } },
   // ── Finanzas (Google Sheet "Finance Ledger") ──
@@ -494,27 +684,47 @@ function callMCP(proc, pendingMap, toolName, args) {
 }
 
 // ── Dynamic timezone & cron management ────────────────────────────────────────────────
-let cronMorning, cronEvening, cronHealth, cronMonthEnd;
+// Health/monthly crons are global (cfg.timezone). Briefs are per user: each
+// onboarded user gets crons at their own brief_morning/brief_evening times in
+// their own timezone. Rebuilt on start, onboarding completion, and any
+// timezone/brief-time change.
+let cronHealth, cronMonthEnd;
+let userBriefCrons = [];
 
 function scheduleCrons() {
   const tz = cfg.timezone || 'America/Los_Angeles';
-  if (cronMorning)  cronMorning.destroy();
-  if (cronEvening)  cronEvening.destroy();
   if (cronHealth)   cronHealth.destroy();
   if (cronMonthEnd) cronMonthEnd.destroy();
-  cronMorning  = cron.schedule('0 7 * * *',  () => sendBriefing('morning'),  { timezone: tz });
-  cronEvening  = cron.schedule('0 20 * * *', () => sendBriefing('evening'),  { timezone: tz });
-  cronHealth   = cron.schedule('0 2 * * *',  runHealthCheck,                 { timezone: tz });
-  cronMonthEnd = cron.schedule('0 9 1 * *',  sendMonthlyUsageReport,         { timezone: tz });
-  console.log(`[cron] scheduled for timezone: ${tz}`);
+  for (const c of userBriefCrons) c.destroy();
+  userBriefCrons = [];
+  cronHealth   = cron.schedule('0 2 * * *', runHealthCheck,         { timezone: tz });
+  cronMonthEnd = cron.schedule('0 9 1 * *', sendMonthlyUsageReport, { timezone: tz });
+
+  const users = db.getDoneUsers();
+  for (const u of users) {
+    const utz = u.timezone || tz;
+    const addBrief = (hhmm, type) => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
+      if (!m) return; // empty/invalid = brief disabled for this user
+      userBriefCrons.push(cron.schedule(`${+m[2]} ${+m[1]} * * *`, () => sendBriefing(type, u.chat_id), { timezone: utz }));
+    };
+    addBrief(u.brief_morning, 'morning');
+    addBrief(u.brief_evening, 'evening');
+  }
+  console.log(`[cron] health/monthly tz=${tz}; briefs scheduled for ${users.length} users (${userBriefCrons.length} crons)`);
 }
 
-async function doUpdateTimezone({ timezone }) {
+async function doUpdateTimezone({ timezone }, chatId) {
   if (!timezone) return 'Error: timezone string required';
-  cfg.timezone = timezone;
-  fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
+  if (chatId) db.updateUser(chatId, { timezone });
+  // cfg.timezone stays Santiago's zone — it drives the global health/monthly
+  // crons and the calendar timezone check.
+  if (!chatId || String(chatId) === String(cfg.telegram_chat_id)) {
+    cfg.timezone = timezone;
+    fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2));
+  }
   scheduleCrons();
-  console.log(`[timezone] updated to ${timezone}`);
+  console.log(`[timezone] ${chatId || 'global'} → ${timezone}`);
   return `Timezone actualizado a ${timezone}. Briefs reprogramados.`;
 }
 
@@ -538,7 +748,7 @@ async function checkCalendarTimezone() {
     if (!calTz) { console.log('[tz-check] no timezone in calendar response'); return; }
     if (calTz !== cfg.timezone) {
       console.log(`[tz-check] timezone changed: ${cfg.timezone} → ${calTz}`);
-      await doUpdateTimezone({ timezone: calTz });
+      await doUpdateTimezone({ timezone: calTz }, cfg.telegram_chat_id);
       if (cfg.telegram_chat_id) {
         await sendMessage(cfg.telegram_chat_id,
           `🌍 Detecté que tu timezone cambió a ${calTz} — adjusté los briefs.`);
@@ -631,12 +841,22 @@ async function callTool(name, args, chatId) {
     if (name === 'list_debts')         return db.listDebts(chatId, args.filter);
     if (name === 'update_debt_status') return db.updateDebt(chatId, args.row, args.status);
 
-    // ── Timezone: update DB for non-Santiago, global cfg for Santiago ─────────
+    // ── Timezone: per-user row (+ global cfg when Santiago), reschedules briefs ─
     if (name === 'update_timezone') {
-      if (isSantiago) return await doUpdateTimezone(args);
-      if (!args.timezone) return 'Error: timezone string required';
-      db.updateUser(chatId, { timezone: args.timezone });
-      return `Timezone actualizado a ${args.timezone}.`;
+      return await doUpdateTimezone(args, chatId);
+    }
+
+    // ── Brief times: per-user schedule (HH:MM 24h, empty string = off) ────────
+    if (name === 'update_brief_times') {
+      const valid = v => v === '' || /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
+      const upd = {};
+      if (args.morning !== undefined) { if (!valid(args.morning)) return 'Formato inválido — usa HH:MM (24h) o "" para desactivar.'; upd.brief_morning = args.morning; }
+      if (args.evening !== undefined) { if (!valid(args.evening)) return 'Formato inválido — usa HH:MM (24h) o "" para desactivar.'; upd.brief_evening = args.evening; }
+      if (!Object.keys(upd).length) return 'Nada que actualizar — pasa morning y/o evening.';
+      db.updateUser(chatId, upd);
+      scheduleCrons();
+      const u = db.getUser(chatId);
+      return `✅ Briefs actualizados: mañana ${u.brief_morning || 'desactivado'} / noche ${u.brief_evening || 'desactivado'}.`;
     }
 
     // ── add_category: update user DB record for non-Santiago users ────────────
@@ -739,8 +959,18 @@ async function handleMessage(chatId, userText) {
   const tz = user.timezone || cfg.timezone || 'America/Los_Angeles';
   const now = new Date();
   const todayISO      = now.toLocaleDateString('en-CA', { timeZone: tz });
-  const todayReadable = now.toLocaleDateString('es-MX', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  const systemWithDate = buildSystemPromptForUser(user) + `\n\n== FECHA ACTUAL ==\nHoy es ${todayReadable} (${todayISO}). Usa esta fecha para calcular "hoy", "mañana", "el miércoles", "la próxima semana", etc. SIEMPRE usa año ${now.getFullYear()} en las fechas.`;
+  const todayReadable = now.toLocaleDateString(user.language === 'en' ? 'en-US' : 'es-MX', { timeZone: tz, weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  const curYear  = parseInt(todayISO.slice(0, 4), 10);
+  const curMonth = parseInt(todayISO.slice(5, 7), 10);
+  let dateBlock = `\n\n== FECHA ACTUAL ==\nHoy es ${todayReadable} (${todayISO}). Usa esta fecha para calcular "hoy", "mañana", "el miércoles", "la próxima semana", etc.
+REGLAS DE AÑO:
+- Las tareas son SIEMPRE para hoy o el futuro — nunca guardes una fecha límite en el pasado.
+- Fecha sin año → asume ${curYear}. Si ese día ya pasó este año, asume la próxima ocurrencia (${curYear + 1}) y menciónalo al confirmar.
+- Si el usuario dice explícitamente ${curYear} o ${curYear + 1}, acéptalo sin cuestionar. Solo aclara si da un año claramente pasado.`;
+  // Year-end ambiguity window: with <2 months left, "el 15 de enero" is genuinely
+  // ambiguous — ask instead of assuming.
+  if (curMonth >= 11) dateBlock += `\n- Queda poco para el fin de año: si el usuario da una fecha SIN año, PREGUNTA a qué año se refiere antes de guardar.`;
+  const systemWithDate = buildSystemPromptForUser(user) + dateBlock;
   const messages    = [{ role:'system', content:systemWithDate }, ...history];
   const userTools   = filterToolsForUser(user);
   const deadline    = Date.now() + 55000;
@@ -815,15 +1045,13 @@ function buildBriefingText(type, features) {
   return text;
 }
 
-async function sendBriefing(type) {
-  const users = db.getDoneUsers();
-  if (!users.length) { console.log('[cron] no done-users yet, skipping'); return; }
-  for (const user of users) {
-    const features = JSON.parse(user.features || '{}');
-    const text     = buildBriefingText(type, features);
-    if (!text) continue;
-    await handleMessage(user.chat_id, text);
-  }
+async function sendBriefing(type, chatId) {
+  const user = db.getUser(chatId);
+  if (!user || user.onboarding !== 'done') return;
+  const features = JSON.parse(user.features || '{}');
+  const text     = buildBriefingText(type, features);
+  if (!text) return;
+  await handleMessage(user.chat_id, text);
 }
 
 // morning/evening/health crons scheduled via scheduleCrons() in start()
@@ -958,7 +1186,7 @@ async function downloadFile(url, destPath) {
   });
 }
 
-async function transcribeVoice(fileId) {
+async function transcribeVoice(fileId, language) {
   // Step 1: get file path from Telegram
   const fileInfo = await tgRequest('getFile', { file_id: fileId });
   if (!fileInfo.ok) throw new Error('getFile failed: ' + JSON.stringify(fileInfo));
@@ -974,7 +1202,8 @@ async function transcribeVoice(fileId) {
     const transcription = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpPath),
       model: 'whisper-1',
-      language: 'es',
+      // No language hint → Whisper autodetects (users who haven't picked one yet).
+      ...(language ? { language } : {}),
     });
     return transcription.text;
   } finally {
@@ -1006,7 +1235,8 @@ async function poll() {
       if (voiceFileId && !text) {
         try {
           console.log(`[voice] transcribing from ${fromName}...`);
-          text = await transcribeVoice(voiceFileId);
+          const vUser = db.getUser(chatId);
+          text = await transcribeVoice(voiceFileId, vUser ? vUser.language : null);
           console.log(`[voice→text] ${text.slice(0, 100)}`);
         } catch (err) {
           console.error('[voice error]', err.message);

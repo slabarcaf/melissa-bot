@@ -46,6 +46,14 @@ function migrate() {
       status_changed_at TEXT
     );
   `);
+
+  // Columns added after the initial release (onboarding v2). ALTER TABLE with a
+  // DEFAULT backfills existing rows, so pre-v2 users keep working unchanged.
+  const userCols = new Set(getDb().prepare('PRAGMA table_info(users)').all().map(c => c.name));
+  const addUserCol = (name, ddl) => { if (!userCols.has(name)) getDb().exec(`ALTER TABLE users ADD COLUMN ${ddl}`); };
+  addUserCol('language',      "language TEXT DEFAULT 'es'");
+  addUserCol('brief_morning', "brief_morning TEXT DEFAULT '07:00'");
+  addUserCol('brief_evening', "brief_evening TEXT DEFAULT '20:00'");
 }
 
 function getUser(chatId) {
@@ -53,10 +61,12 @@ function getUser(chatId) {
 }
 
 function createUser(chatId, data = {}) {
+  // language starts NULL (not the column default 'es') so voice transcription
+  // can autodetect until the user picks a language during onboarding.
   getDb().prepare(`
     INSERT OR IGNORE INTO users
-      (chat_id, name, preferred_name, onboarding, timezone, features, task_user_tag, categories)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (chat_id, name, preferred_name, onboarding, timezone, features, task_user_tag, categories, language)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     chatId,
     data.name           || null,
@@ -65,7 +75,8 @@ function createUser(chatId, data = {}) {
     data.timezone       || 'America/Los_Angeles',
     JSON.stringify(data.features    || {}),
     String(chatId),
-    JSON.stringify(data.categories  || [])
+    JSON.stringify(data.categories  || []),
+    data.language       || null
   );
 }
 
