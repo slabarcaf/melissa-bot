@@ -1,0 +1,33 @@
+[Unit]
+Description=Melissa/Sydney bot (non-root, hardened)
+After=network.target
+
+[Service]
+Type=simple
+User=melissa
+Group=melissa
+WorkingDirectory=/opt/melissa/whatsapp-bot
+Environment=CFG_PATH=/opt/melissa/whatsapp-bot/config.json
+Environment=CATS_PATH=/opt/melissa/whatsapp-bot/categories.json
+Environment=DB_PATH=/opt/melissa/whatsapp-bot/melissa.db
+Environment=USAGE_LOG=/opt/melissa/.openclaw/usage/usage-log.jsonl
+Environment=USAGE_DIR=/opt/melissa/.openclaw/usage
+Environment=PRIORITY_FILE=/opt/melissa/.openclaw/priority.json
+Environment=SKILLS_DIR=/opt/melissa/.openclaw/skills
+ExecStart=/usr/bin/node /opt/melissa/whatsapp-bot/whatsapp-bot.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+# ── sandboxing ──
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/melissa
+ProtectKernelTunables=true
+ProtectControlGroups=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
