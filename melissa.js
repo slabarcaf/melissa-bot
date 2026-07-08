@@ -52,7 +52,7 @@ const openai = new OpenAI({ apiKey: cfg.openai_api_key });
 const TG_BASE = `https://api.telegram.org/bot${cfg.telegram_token}`;
 
 // ── System prompt ─────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are Melissa, Santiago's personal assistant. You have an easy-going, young energy — you keep things light and aren't afraid to drop a quick joke or a playful comment when the moment feels right. But you're also sharp and assertive: when something needs to get done, you're direct and don't waste words. And when it comes to process — task IDs, update rules, how things must be done — you're strict, no exceptions. Be concise. Reply in the user's language.
+const SYSTEM_PROMPT = `You are Sydney, Santiago's personal assistant. You have an easy-going, young energy — you keep things light and aren't afraid to drop a quick joke or a playful comment when the moment feels right. But you're also sharp and assertive: when something needs to get done, you're direct and don't waste words. And when it comes to process — task IDs, update rules, how things must be done — you're strict, no exceptions. Be concise. Reply in the user's language.
 
 Default behavior is to ACT, not ask for confirmation. When you have enough information, do it and tell Santiago what you did — he'll correct you if he disagrees. Exceptions: (1) sending emails — always confirm to/subject/body before sending; (2) delete_task — always confirm the task name before deleting.
 
@@ -262,6 +262,12 @@ Para registrar una deuda necesito:
 Ej: _"Juan me debe 50 dólares por un asado"_
 Ej: _"le debo a María 200 pesos"_
 
+✅ *MARCAR COMO LISTO O ELIMINAR*
+No necesitas números ni IDs, solo dime en palabras simples:
+• Tarea lista → _"ya la hice"_, _"listo"_, _"terminé lo de revisar el contrato"_
+• Eliminar una tarea → _"elimina la tarea de revisar el contrato"_ (te confirmo antes de borrarla)
+• Deuda pagada → _"ya le pagué a Juan"_ o _"María ya me pagó"_
+
 Cuando quieras, ¡empieza!`;
 }
 
@@ -323,7 +329,7 @@ async function handleOnboarding(chatId, user, text) {
 
   if (state === 'new') {
     db.updateUser(chatId, { onboarding: 'awaiting_name' });
-    await sendMessage(chatId, '¡Hola! Soy Melissa 👋 Tu asistente personal.\n\n¿Cómo quieres que te llame?');
+    await sendMessage(chatId, '¡Hola! Soy Sydney 👋 Tu asistente personal.\n\n¿Cómo quieres que te llame?');
     return;
   }
 
@@ -367,8 +373,8 @@ async function sendInviteEmail(to, label, link) {
   const tokenData = await tokenRes.json();
   if (!tokenData.access_token) throw new Error('Gmail token refresh failed');
 
-  const subject = 'Te invitaron a Melissa — tu asistente personal';
-  const body    = `Hola ${label},\n\nTe invitaron a usar Melissa, un asistente personal inteligente en Telegram.\n\nHaz clic aquí para comenzar:\n${link}\n\n(El link es válido por 30 días. Si no tienes Telegram instalado, también funciona en tu navegador en web.telegram.org)\n\n— Santiago`;
+  const subject = 'Te invitaron a Sydney — tu asistente personal';
+  const body    = `Hola ${label},\n\nTe invitaron a usar Sydney, un asistente personal inteligente en Telegram.\n\nHaz clic aquí para comenzar:\n${link}\n\n(El link es válido por 30 días. Si no tienes Telegram instalado, también funciona en tu navegador en web.telegram.org)\n\n— Santiago`;
   const raw     = `To: ${to}\r\nSubject: ${subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`;
   const encoded = Buffer.from(raw).toString('base64url');
 
