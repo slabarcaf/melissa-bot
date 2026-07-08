@@ -544,9 +544,77 @@ const TASK_TOOLS   = ['list_tasks','add_task','update_task','update_tasks','dele
 const CAL_TOOLS    = ['add_calendar_event','update_calendar_event','list_calendar_events','scan_gmail_for_actions','lookup_google_contact'];
 const SHEETS_TOOLS = ['add_contact','list_contacts','update_contact']; // finance moved to SQLite
 
+// Server-side authorization: which feature flag each tool requires. Tools absent
+// from this map are either Santiago-only (get_usage) or ungated (update_timezone).
+// This backstops filterToolsForUser() — never trust the tool list alone.
+const TOOL_FEATURE = {
+  list_tasks:'tasks', add_task:'tasks', update_task:'tasks', update_tasks:'tasks', delete_task:'tasks', add_category:'tasks',
+  add_debt:'finanzas', list_debts:'finanzas', update_debt_status:'finanzas',
+  add_calendar_event:'calendar', update_calendar_event:'calendar', list_calendar_events:'calendar', lookup_google_contact:'calendar',
+  scan_gmail_for_actions:'email',
+  add_contact:'networking', list_contacts:'networking', update_contact:'networking',
+};
+const FEATURE_DENIED = 'Esa función no está disponible para ti por el momento.';
+
+// Ownership model for the shared Task Dashboard: a task belongs to a non-Santiago
+// user iff its title carries that user's [uid:CHATID] tag; it belongs to Santiago
+// iff it carries no [uid:] tag at all. Mirrors filterTaskOutput()'s display logic,
+// but enforced authoritatively against the full task list for writes/deletes (F1).
+function taskBelongsTo(toDo, chatId, isSantiago) {
+  const title = toDo || '';
+  if (isSantiago) return !title.includes('[uid:');
+  return title.includes(`[uid:${chatId}]`);
+}
+
+// Fetch ALL tasks straight from the Task API (not the MCP, whose filters hide
+// future/on-hold tasks) and return the set of rowIds the caller may mutate.
+async function ownedTaskIdSet(chatId, isSantiago) {
+  const r = await fetch(`${cfg.task_api_base}/api/tasks`, {
+    headers: { Authorization: `Bearer ${cfg.task_api_secret}` }
+  });
+  if (!r.ok) throw new Error(`Task API HTTP ${r.status}`);
+  const data = await r.json();
+  const set = new Set();
+  for (const t of (data.tasks || [])) {
+    if (taskBelongsTo(t.toDo, chatId, isSantiago)) set.add(String(t.rowId));
+  }
+  return set;
+}
+
 async function callTool(name, args, chatId) {
   const isSantiago = String(chatId) === String(cfg.telegram_chat_id);
   try {
+    // ── F5: server-side authorization re-check (defense-in-depth) ─────────────
+    // Do not rely solely on the tool list sent to OpenAI. Re-verify the caller's
+    // feature flags here so a stray/injected tool name can never execute.
+    if (!isSantiago) {
+      if (name === 'get_usage') return FEATURE_DENIED;
+      const reqFeat = TOOL_FEATURE[name];
+      if (reqFeat) {
+        const u = db.getUser(chatId);
+        const features = u ? JSON.parse(u.features || '{}') : {};
+        if (!features[reqFeat]) return FEATURE_DENIED;
+      }
+    }
+
+    // ── F1: task ownership enforcement — block cross-user update/delete (IDOR) ─
+    // The Task Dashboard is single-tenant; a raw taskId could belong to anyone.
+    // Verify ownership before any mutating task call. Fail closed on API error.
+    if (['update_task','delete_task','update_tasks'].includes(name)) {
+      let owned;
+      try { owned = await ownedTaskIdSet(chatId, isSantiago); }
+      catch (e) { return 'No pude verificar la tarea ahora. Intenta de nuevo.'; }
+      if (name === 'update_tasks') {
+        const updates = Array.isArray(args.updates) ? args.updates : [];
+        const allowed = updates.filter(u => owned.has(String(u.taskId)));
+        if (allowed.length === 0) return 'No se encontraron esas tareas.';
+        args = { ...args, updates: allowed };
+      } else {
+        // Not-found phrasing intentionally hides that the id exists for someone else.
+        if (!owned.has(String(args.taskId))) return `No se encontró la tarea [#${args.taskId}].`;
+      }
+    }
+
     // ── Finance: SQLite per-user (replaces sheets-mcp finance tools) ──────────
     if (name === 'add_debt')           return db.addDebt(chatId, args);
     if (name === 'list_debts')         return db.listDebts(chatId, args.filter);
