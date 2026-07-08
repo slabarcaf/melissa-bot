@@ -204,7 +204,10 @@ If Santiago says he is traveling or changing city/country → call update_timezo
 == BRIEFS ==
 Los briefs de la mañana/noche se envían automáticamente a las horas que el usuario configuró.
 Si el usuario pide cambiarlos de hora, quitar uno o desactivarlos ("mándame el brief a las 8", "ya no quiero el de la noche", "stop the morning brief") → llama update_brief_times(morning, evening) con formato HH:MM 24h; string vacío "" desactiva ese brief. Solo pasa el campo que cambia.
-Recuérdale al usuario cuando venga al caso que puede escribirte a cualquier hora — los briefs son solo resúmenes programados.`;
+Recuérdale al usuario cuando venga al caso que puede escribirte a cualquier hora — los briefs son solo resúmenes programados.
+
+== ADMIN (solo Santiago) ==
+La gestión de usuarios es por comandos directos de Telegram, NO por tools: /users (lista usuarios), /invite <Nombre> [email] (invita), /resetuser <id> (repite el onboarding conservando datos), /deleteuser <id> confirm (elimina cuenta y deudas). Si Santiago pide ver, invitar, resetear o eliminar usuarios, respóndele con el comando exacto a enviar — NO inventes tools ni digas que lo hiciste tú.`;
 
 // ── Multi-user helpers ────────────────────────────────────────────────────────
 
@@ -555,6 +558,59 @@ async function handleOnboarding(chatId, user, text) {
     scheduleCrons(); // user is now 'done' → give them their brief crons
     const name = (db.getUser(chatId) || {}).preferred_name || (lang === 'en' ? 'you' : 'tú');
     await sendMessage(chatId, T.done(name));
+    return;
+  }
+}
+
+// ── Admin commands (Santiago only): /users, /resetuser, /deleteuser ──────────
+
+function describeUser(u) {
+  const feats = Object.entries(JSON.parse(u.features || '{}'))
+    .filter(([, v]) => v).map(([k]) => k).join(',') || '—';
+  return `• *${u.preferred_name || u.name || '?'}* (${u.name || '?'}) — id \`${u.chat_id}\`\n` +
+         `  ${u.onboarding} | ${u.timezone} | ${u.language || 'auto'} | briefs ${u.brief_morning || 'off'}/${u.brief_evening || 'off'} | ${feats}`;
+}
+
+async function handleAdminCommand(chatId, text) {
+  const [cmd, idArg, confirmArg] = text.trim().split(/\s+/);
+
+  if (cmd === '/users') {
+    const users = db.listUsers();
+    await sendMessage(chatId,
+      `👥 Usuarios (${users.length}):\n${users.map(describeUser).join('\n')}\n\n` +
+      `Comandos:\n/resetuser <id> — repite el onboarding (conserva tareas/deudas/datos)\n/deleteuser <id> confirm — elimina la cuenta y sus deudas`);
+    return;
+  }
+
+  const targetId = parseInt(idArg, 10);
+  if (!targetId) { await sendMessage(chatId, `Uso: ${cmd} <chat_id> — saca el id de /users.`); return; }
+  if (String(targetId) === String(cfg.telegram_chat_id)) {
+    await sendMessage(chatId, '🚫 No puedes aplicar esto a tu propia cuenta.');
+    return;
+  }
+  const target = db.getUser(targetId);
+  if (!target) { await sendMessage(chatId, `No existe un usuario con id ${targetId}. Revisa /users.`); return; }
+  const label = target.preferred_name || target.name || targetId;
+
+  if (cmd === '/resetuser') {
+    db.updateUser(targetId, { onboarding: 'new' });
+    delete histories[targetId];
+    scheduleCrons(); // non-done users get no brief crons until they finish again
+    await sendMessage(chatId, `🔄 Onboarding de *${label}* reiniciado — le mando la bienvenida ahora. Sus tareas, deudas y datos se conservan.`);
+    await handleOnboarding(targetId, db.getUser(targetId), '');
+    return;
+  }
+
+  if (cmd === '/deleteuser') {
+    if (confirmArg !== 'confirm') {
+      await sendMessage(chatId,
+        `⚠️ Vas a eliminar a *${label}* (id ${targetId}): se borra su cuenta y sus deudas; sus tareas del dashboard quedan huérfanas (nadie las verá). Para confirmar envía:\n/deleteuser ${targetId} confirm`);
+      return;
+    }
+    const res = db.deleteUser(targetId);
+    delete histories[targetId];
+    scheduleCrons();
+    await sendMessage(chatId, `🗑️ Usuario *${label}* eliminado (${res.debtsDeleted} deudas borradas). Para volver a entrar necesitará un nuevo /invite.`);
     return;
   }
 }
@@ -1265,6 +1321,12 @@ async function poll() {
           }
         }
         await sendMessage(chatId, reply);
+        continue;
+      }
+
+      // ── Admin: user management commands (Santiago only) ───────────────────
+      if (chatId === cfg.telegram_chat_id && /^\/(users|resetuser|deleteuser)\b/.test(text)) {
+        await handleAdminCommand(chatId, text).catch(err => console.error('[admin]', err.message));
         continue;
       }
 
