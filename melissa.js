@@ -918,7 +918,8 @@ async function poll() {
         const code  = text.slice(7).trim();
         const label = code ? db.claimInviteCode(code, chatId) : null;
         if (code && label !== null) {
-          db.createUser(chatId, { name: label });
+          // New users get Tasks + Finanzas only (email/calendar/networking stay Santiago-only)
+          db.createUser(chatId, { name: label, features: { tasks: true, finanzas: true } });
           console.log(`[invite] ${fromName} (${chatId}) claimed code ${code} for "${label}"`);
           await handleOnboarding(chatId, db.getUser(chatId), '');
         } else if (code) {
