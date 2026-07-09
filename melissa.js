@@ -108,6 +108,7 @@ In briefs, use this exact structure (omit any section that has no content):
 *[Category]*
 • 🔴 [priority task — only if 🔴 appears in tool output] — [date]
 • [regular task — no emoji] — [date]
+• 🔜 [task due TOMORROW — only if 🔜 appears in tool output] — [date]
 
 *[Next Category]*
 • [task] — [date]
@@ -120,8 +121,9 @@ In briefs, use this exact structure (omit any section that has no content):
 
 The 💰 DEUDAS PENDIENTES and 🤝 NETWORKING sections appear ONLY in briefings when their tools were called and returned content — omit each if empty. Never invent debts or contacts.
 
-Tasks must be grouped by category. Each task line from the tool starts with [Category] — use this tag to determine the category header, then strip it from the displayed task text. Each category header appears exactly once — merge ALL tasks of the same category under one header regardless of due date or section. The tool may return tasks split into ⏰ Vencidas and 📅 Para hoy sub-sections — ignore those dividers entirely when grouping for display: treat the full task list as one flat pool and group ONLY by [Category]. If a category has no tasks, omit it. Never output a paragraph of tasks separated by commas or semicolons.
+Tasks must be grouped by category. Each task line from the tool starts with [Category] — use this tag to determine the category header, then strip it from the displayed task text. Each category header appears exactly once — merge ALL tasks of the same category under one header regardless of due date or section. The tool may return tasks split into ⏰ Vencidas, 📅 Para hoy and 🔜 Mañana sub-sections — ignore those dividers entirely when grouping for display: treat the full task list as one flat pool and group ONLY by [Category]. If a category has no tasks, omit it. Never output a paragraph of tasks separated by commas or semicolons.
 🔴 appears ONLY on tasks that literally have "🔴 " at the start of the task line in the tool output — do NOT add 🔴 to tasks that don't have it, even if they are overdue.
+🔜 marks a task due TOMORROW — it comes from the tool output; NEVER add 🔜 yourself. Keep 🔜 tasks under their normal [Category] alongside the due tasks, preserving the 🔜 at the start of the line (after 🔴 if the task also has it). Within each category, list overdue/today tasks first, then the 🔜 tomorrow tasks. (Only the evening brief's overdue_today_tomorrow filter returns 🔜 tasks.)
 Calendar empty-state: for 📅 AGENDA HOY say "Sin eventos hoy" if no events. For 📅 AGENDA DE MAÑANA say "Sin eventos mañana" if no events. Never say "próximos N días".
 DATE DISPLAY — whenever you show a task due date (task lists, briefs, confirmations, reminders), format it as day-month abbreviated with a dash: "8-Jul", "15-Ene" (month abbreviation in the user's language). Add the year ONLY when it is not the current year (e.g. "15-Ene-2027"). Never show ambiguous numeric dates like 8/7 or 07/08.
 
@@ -646,7 +648,7 @@ async function sendInviteEmail(to, label, link) {
 
 // ── OpenAI tools ──────────────────────────────────────────────────────────────
 const TOOLS = [
-  { type:'function', function:{ name:'list_tasks', description:'List tasks with optional filter', parameters:{ type:'object', properties:{ filter:{ type:'string', enum:['all','pending','today','tomorrow','this_week','overdue','overdue_and_today','on_hold'] }, section:{ type:'string' } } } } },
+  { type:'function', function:{ name:'list_tasks', description:'List tasks with optional filter', parameters:{ type:'object', properties:{ filter:{ type:'string', enum:['all','pending','today','tomorrow','this_week','overdue','overdue_and_today','overdue_today_tomorrow','on_hold'] }, section:{ type:'string' } } } } },
   { type:'function', function:{ name:'add_task', description:'Add a new task', parameters:{ type:'object', properties:{ toDo:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'}, recurrenceInterval:{type:'number'}, recurrenceUnit:{type:'string'} }, required:['toDo'] } } },
   { type:'function', function:{ name:'update_task', description:'Update a single task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } },
   { type:'function', function:{ name:'update_tasks', description:'Batch update multiple tasks at once', parameters:{ type:'object', properties:{ updates:{ type:'array', items:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } }, required:['updates'] } } },
@@ -1093,7 +1095,7 @@ function buildBriefingText(type, features) {
     return parts.join(' ');
   }
   // evening
-  let text = 'Buenas noches. Llama a list_tasks con filter overdue_and_today';
+  let text = 'Buenas noches. Llama a list_tasks con filter overdue_today_tomorrow (incluye las tareas de mañana, que vienen marcadas con 🔜)';
   if (f.calendar) text += ' y list_calendar_events con days_ahead 2 (muestra solo eventos de MAÑANA en la sección 📅 AGENDA DE MAÑANA; si no hay, escribe exactamente "Sin eventos mañana")';
   text += '. Usa el formato de FORMAT RULES: ✅ TAREAS agrupadas por categoría (cada categoría aparece una sola vez)';
   if (f.calendar) text += ', luego 📅 AGENDA DE MAÑANA';
