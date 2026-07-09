@@ -654,7 +654,7 @@ async function sendInviteEmail(to, label, link) {
 // ── OpenAI tools ──────────────────────────────────────────────────────────────
 const TOOLS = [
   { type:'function', function:{ name:'list_tasks', description:'List tasks with optional filter', parameters:{ type:'object', properties:{ filter:{ type:'string', enum:['all','pending','today','tomorrow','this_week','overdue','overdue_and_today','overdue_today_tomorrow','on_hold'] }, section:{ type:'string' } } } } },
-  { type:'function', function:{ name:'add_task', description:'Add a new task', parameters:{ type:'object', properties:{ toDo:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'}, recurrenceInterval:{type:'number'}, recurrenceUnit:{type:'string'} }, required:['toDo'] } } },
+  { type:'function', function:{ name:'add_task', description:'Add a new task', parameters:{ type:'object', properties:{ toDo:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'}, recurrenceInterval:{type:'number'}, recurrenceUnit:{type:'string'} }, required:['toDo','tipo'] } } },
   { type:'function', function:{ name:'update_task', description:'Update a single task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } },
   { type:'function', function:{ name:'update_tasks', description:'Batch update multiple tasks at once', parameters:{ type:'object', properties:{ updates:{ type:'array', items:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } }, required:['updates'] } } },
   { type:'function', function:{ name:'delete_task', description:'Delete a task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'} }, required:['taskId'] } } },
@@ -842,6 +842,15 @@ const TOOL_FEATURE = {
 // so the model paraphrases it naturally instead of parroting a canned sentence.
 const FEATURE_DENIED = '(Esta tool no está habilitada para este usuario. Explica con amabilidad que por ahora solo puedes ayudarle con sus tareas y deudas — sin mencionar tools ni detalles técnicos.)';
 
+// Directive, not user-facing: mirrors FEATURE_DENIED's shape. Returned only as a
+// role:'tool' result so the model reacts by asking/confirming a category itself,
+// per the RULES text at lines 180-190 — never a canned string shown to the user.
+const ADD_TASK_NEEDS_CATEGORY =
+  '(No se creó la tarea porque falta "tipo" (categoría). Pregunta al usuario qué categoría usar ' +
+  '-- o, si ya la habías inferido en este turno, pide su confirmación explícita -- y NO llames ' +
+  'add_task de nuevo hasta tener un tipo confirmado. No menciones "tools", "campos" ni detalles ' +
+  'técnicos; simplemente continúa la conversación de forma natural.)';
+
 // Ownership model for the shared Task Dashboard: a task belongs to a non-Santiago
 // user iff its title carries that user's [uid:CHATID] tag; it belongs to Santiago
 // iff it carries no [uid:] tag at all. Mirrors filterTaskOutput()'s display logic,
@@ -898,6 +907,15 @@ async function callTool(name, args, chatId) {
       } else {
         // Not-found phrasing intentionally hides that the id exists for someone else.
         if (!owned.has(String(args.taskId))) return `No se encontró la tarea [#${args.taskId}].`;
+      }
+    }
+
+    // ── Category-integrity guard (bug fix: silent "Otros" default on add_task) ──
+    // Scoped to add_task only — never update_task (own guardrails) or calendar tools.
+    if (name === 'add_task') {
+      const tipo = args.tipo;
+      if (tipo === undefined || tipo === null || String(tipo).trim() === '') {
+        return ADD_TASK_NEEDS_CATEGORY;
       }
     }
 
