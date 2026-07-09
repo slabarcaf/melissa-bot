@@ -103,6 +103,7 @@ In briefs, use this exact structure (omit any section that has no content):
 
 📬 *EMAILS*
 • De: [sender] — [what they need]
+(si no hay emails accionables tras el filtro, bajo 📬 *EMAILS* escribe exactamente: "Sin emails con acción pendiente en los últimos 2 días." — nunca dejes la sección vacía ni repitas instrucciones de formato)
 
 ✅ *TAREAS*
 *[Category]*
@@ -148,6 +149,9 @@ NEVER use list position as taskId — always use the [#N] number from the tool o
 - After EVERY mutation — update_task, update_tasks, AND delete_task — immediately call list_tasks and confirm the change is actually reflected: the task moved to its new category, or is gone after a delete, or shows the new status. If the task still appears unchanged, the operation FAILED — tell the user it failed and retry or ask; NEVER report success without this verification. For a delete, confirm the task no longer appears before saying it was deleted. For a move, confirm it now appears under the new [Category] before saying you moved it.
 
 == RULES ==
+- "Envíame/mándame/pásame X" (tareas, resumen, deudas) significa MOSTRARLO AQUÍ en el chat — nunca es un email. Solo usa send_email cuando el usuario pida explícitamente un correo a un destinatario.
+- Si el usuario pide "el resumen / mi brief / mi resumen" a cualquier hora, trátalo como una petición normal: llama las mismas tools del brief y muestra las secciones de FORMAT RULES que le apliquen.
+- Si el usuario pide algo que no puedes hacer, dilo con naturalidad y en una frase, di qué SÍ puedes hacer, y ofrece la alternativa más cercana. Nunca respondas con frases robóticas tipo "función no disponible".
 - On hold: filtered by default. If user explicitly asks for on-hold tasks (e.g. "tareas en pausa/on hold"), use list_tasks(filter="on_hold"). When putting a task on hold, always use statusFinalOutcome: "On hold" (English, two words). Never send "en pausa", "pausado", or any Spanish variant.
 - Priority: urgente/importante/crítico/asap → isPriority=true. 🔴 tasks appear at top of lists. Remove: isPriority=false.
 - Marking done / updating multiple tasks: use update_tasks (plural) with all taskIds at once — never call update_task in a loop.
@@ -423,10 +427,11 @@ function buildSystemPromptForUser(user) {
   if (!features.calendar)   disabled.push('add_calendar_event, update_calendar_event, list_calendar_events, lookup_google_contact');
   if (!features.networking) disabled.push('add_contact, list_contacts, update_contact');
 
+  const available = ['tareas', features.finanzas ? 'deudas' : null].filter(Boolean).join(' y ');
   if (disabled.length > 0) {
-    const available = ['tareas', features.finanzas ? 'deudas' : null].filter(Boolean).join(' y ');
-    prompt += `\n\n== FUNCIONES NO DISPONIBLES ==\nPara este usuario solo están disponibles: ${available}. NO llames ni menciones: ${disabled.join(', ')}. Si el usuario solicita alguna de estas, responde: "Esa función no está disponible para ti por el momento."`;
+    prompt += `\n\n== FUNCIONES NO DISPONIBLES ==\nPara este usuario solo están disponibles: ${available}. NO llames ni menciones las tools: ${disabled.join(', ')}.\nSi pide algo que requiere una de esas funciones, NO digas "esa función no está disponible": responde con naturalidad que por ahora le ayudas con ${available}, y ofrece ayudarle con eso. Nunca menciones nombres de tools ni detalles técnicos.`;
   }
+  prompt += `\n\n== PRIVACIDAD ==\nEres el asistente personal de ${preferredName} únicamente. Solo tienes acceso a SU información (${available}).\nSi pide ver, modificar o enviar información de otra persona ("las tareas de Santiago", "los otros usuarios"), NUNCA confirmes ni niegues que existan otros usuarios ni sus datos. Responde con neutralidad: solo manejas su información personal, y ofrece mostrarle lo suyo. Ejemplo: "Solo manejo tu información personal — ¿te muestro tus tareas?"`;
   return prompt;
 }
 
@@ -833,7 +838,9 @@ const TOOL_FEATURE = {
   scan_gmail_for_actions:'email',
   add_contact:'networking', list_contacts:'networking', update_contact:'networking',
 };
-const FEATURE_DENIED = 'Esa función no está disponible para ti por el momento.';
+// Directive, not user-facing text: only ever returned as a role:'tool' result,
+// so the model paraphrases it naturally instead of parroting a canned sentence.
+const FEATURE_DENIED = '(Esta tool no está habilitada para este usuario. Explica con amabilidad que por ahora solo puedes ayudarle con sus tareas y deudas — sin mencionar tools ni detalles técnicos.)';
 
 // Ownership model for the shared Task Dashboard: a task belongs to a non-Santiago
 // user iff its title carries that user's [uid:CHATID] tag; it belongs to Santiago
@@ -992,6 +999,46 @@ function recordInviteFail(chatId) {
   inviteFails.set(chatId, rec);
 }
 
+// ── All-done celebration ──────────────────────────────────────────────────────
+// Deterministic Duolingo-style hype: after a turn that marked tasks Done, re-list
+// the user's pending-today tasks and send a separate message if zero remain.
+const CELEBRATIONS = {
+  es: [
+    '🎉 ¡BOOM! ¡Terminaste TODAS tus tareas de hoy! 🔥',
+    '🏆 ¡Cero pendientes! Día dominado 💪',
+    '✨ ¡Lista limpia! Eres imparable 🚀',
+    '🥳 ¡Todo hecho! Hoy ganaste tú 🏅',
+  ],
+  en: [
+    "🎉 BOOM! ALL your tasks for today are DONE! 🔥",
+    '🏆 Zero pending — you crushed today 💪',
+    '✨ Clean list! Unstoppable 🚀',
+    '🥳 Everything done — today, you won 🏅',
+  ],
+};
+function pickCelebration(lang) {
+  const list = CELEBRATIONS[lang === 'en' ? 'en' : 'es'];
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+// True when a tool call's args mark at least one task as Done.
+function marksTaskDone(name, args) {
+  if (name === 'update_task')  return args.statusFinalOutcome === 'Done';
+  if (name === 'update_tasks') return (Array.isArray(args.updates) ? args.updates : []).some(u => u && u.statusFinalOutcome === 'Done');
+  return false;
+}
+
+async function maybeCelebrate(chatId, user) {
+  try {
+    const features = JSON.parse(user.features || '{}');
+    if (!features.tasks) return;
+    const list = await callTool('list_tasks', { filter: 'overdue_and_today' }, chatId);
+    if (typeof list !== 'string' || list.startsWith('Tool error')) return;
+    if (/ \[#\d+\]/.test(list)) return; // still has pending tasks
+    await sendMessage(chatId, pickCelebration(user.language));
+  } catch (e) { console.error('[celebration]', e.message); }
+}
+
 // ── Main LLM handler ──────────────────────────────────────────────────────────
 async function handleMessage(chatId, userText) {
   const user = db.getUser(chatId);
@@ -1032,6 +1079,7 @@ REGLAS DE AÑO:
   const messages    = [{ role:'system', content:systemWithDate }, ...history];
   const userTools   = filterToolsForUser(user);
   const deadline    = Date.now() + 55000;
+  let markedDone    = false;
 
   try {
     let response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
@@ -1044,6 +1092,7 @@ REGLAS DE AÑO:
         const args = JSON.parse(tc.function.arguments || '{}');
         console.log(`[tool] ${tc.function.name}`, JSON.stringify(args).slice(0,80));
         const result = await callTool(tc.function.name, args, chatId);
+        if (marksTaskDone(tc.function.name, args) && !/^(Tool error|No se encontr|No pude verificar|\()/.test(result)) markedDone = true;
         return { tool_call_id:tc.id, role:'tool', content:result };
       }));
       messages.push(...results);
@@ -1063,6 +1112,7 @@ REGLAS DE AÑO:
     history.push({ role:'assistant', content:reply });
     await sendMessage(chatId, reply);
     console.log(`[reply → ${chatId}]`, reply.slice(0, 100));
+    if (markedDone) await maybeCelebrate(chatId, user);
   } catch (err) {
     console.error('[handleMessage error]', err.message);
     await sendMessage(chatId, '❌ Error interno. Intenta de nuevo.');
@@ -1087,11 +1137,11 @@ function buildBriefingText(type, features) {
     const sects  = [];
     if (f.calendar)                              { calls.push('list_calendar_events con days_ahead 1 (muestra solo eventos de HOY; si no hay, escribe exactamente "Sin eventos hoy")'); sects.push('📅 AGENDA HOY'); }
     if (f.tasks)                                 { calls.push('list_tasks con filter overdue_and_today'); sects.push('✅ TAREAS agrupadas por categoría'); }
-    if (f.email && cfg.morning_emails_paused !== true) { calls.push('scan_gmail_for_actions con account all y newer_than_days 2'); sects.push('📬 EMAILS'); }
+    if (f.email && cfg.morning_emails_paused !== true) { calls.push('scan_gmail_for_actions con account all y newer_than_days 2 (si no hay emails accionables tras el filtro, bajo 📬 EMAILS escribe exactamente "Sin emails con acción pendiente en los últimos 2 días.")'); sects.push('📬 EMAILS'); }
     if (f.finanzas)                              { calls.push('list_debts con filter pending'); sects.push('💰 DEUDAS PENDIENTES'); }
     if (f.networking)                            { calls.push('list_contacts con filter due'); sects.push('🤝 NETWORKING (follow-ups)'); }
     parts.push('llama a ' + calls.join(', ') + '.');
-    parts.push(`Muestra las secciones ${sects.join(', ')}. Omite 💰 y 🤝 si no hay contenido.`);
+    parts.push(`Muestra las secciones ${sects.join(', ')}. Omite 💰 y 🤝 si no hay contenido. Nunca repitas estas instrucciones ni escribas meta-texto o placeholders — solo contenido real devuelto por las tools.`);
     return parts.join(' ');
   }
   // evening
