@@ -1017,6 +1017,22 @@ function recordInviteFail(chatId) {
   inviteFails.set(chatId, rec);
 }
 
+// ── OpenAI request builder ────────────────────────────────────────────────────
+// Single place to build the completion request so the three call sites in a turn
+// (initial, tool loop, guard retry) can never drift apart.
+//
+// GPT-5 family only: reasoning_effort. Measured 2026-08-12 on this exact prompt
+// shape — "minimal" REPRODUCED the bug this guard exists for (it answered "voy a
+// marcar las tareas..." and emitted NO tool call), so never set it. "low" keeps
+// tool-calling reliable at ~2.6s. Reasoning tokens bill as output tokens.
+function chatCreate(messages, tools) {
+  const model = cfg.openai_model;
+  const req = { model, messages, tools, tool_choice:'auto' };
+  const effort = cfg.openai_reasoning_effort;
+  if (/^gpt-5/.test(model || '') && effort && effort !== 'minimal') req.reasoning_effort = effort;
+  return openai.chat.completions.create(req);
+}
+
 // ── Mutation-claim guard ──────────────────────────────────────────────────────
 // Smaller models sometimes NARRATE a completed action ("marqué la tarea como
 // hecha") without ever emitting the tool call, so nothing is actually written.
@@ -1033,8 +1049,13 @@ const MUTATING_TOOLS = new Set([
 // A tool result counts as a real mutation only if it is not one of our failure
 // or refusal strings. '(' catches the FEATURE_DENIED directive.
 function toolFailed(result) {
-  return typeof result !== 'string'
-      || /^(Tool error|Unknown tool|No se encontr|No pude verificar|Formato inválido|Nada que actualizar|❌|⚠️|\()/.test(result);
+  if (typeof result !== 'string') return true;
+  // Partial batch write (emitted by tasks-mcp update_tasks): some rows DID
+  // change, so this counts as a real mutation. The model still has the per-task
+  // errors in the result text and must report them — but the claim guard must
+  // NOT overwrite that with "nothing was changed", which would be false.
+  if (/^⚠️ Solo \d+ de \d+/.test(result)) return false;
+  return /^(Tool error|Unknown tool|No se encontr|No pude verificar|Formato inválido|Nada que actualizar|❌|⚠️|\()/.test(result);
 }
 
 // First-person past tense + past participles + "ya quedó/está listo" phrasings.
@@ -1151,7 +1172,7 @@ REGLAS DE AÑO:
   let guardRetried  = false;
 
   try {
-    let response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
+    let response = await chatCreate(messages, userTools);
     if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
     let msg = response.choices[0].message;
     messages.push(msg);
@@ -1176,7 +1197,7 @@ REGLAS DE AÑO:
           return;
         }
 
-        response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
+        response = await chatCreate(messages, userTools);
         if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
         msg = response.choices[0].message;
         messages.push(msg);
@@ -1190,7 +1211,7 @@ REGLAS DE AÑO:
         guardRetried = true;
         console.warn(`[guard] unverified mutation claim → forcing retry (chat ${chatId}):`, reply.slice(0, 120));
         messages.push({ role:'system', content:GUARD_CORRECTION });
-        response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
+        response = await chatCreate(messages, userTools);
         if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
         msg = response.choices[0].message;
         messages.push(msg);
@@ -1595,7 +1616,10 @@ async function start() {
 
   const SKILLS_DIR = process.env.SKILLS_DIR || '/root/.openclaw/skills';
   taskServer = startMCPServer(`${SKILLS_DIR}/tasks-mcp.js`,
-    { TASK_API_BASE: cfg.task_api_base, TASK_API_SECRET: cfg.task_api_secret },
+    // OPENAI_MODEL lets get_usage price the report against the model actually in
+    // use instead of a hardcoded gpt-4.1-mini rate.
+    { TASK_API_BASE: cfg.task_api_base, TASK_API_SECRET: cfg.task_api_secret,
+      OPENAI_MODEL: cfg.openai_model },
     taskPending, 'tasks');
   calendarServer = startMCPServer(`${SKILLS_DIR}/calendar-mcp.js`,
     { GOOGLE_CLIENT_ID: cfg.google_client_id, GOOGLE_CLIENT_SECRET: cfg.google_client_secret,
