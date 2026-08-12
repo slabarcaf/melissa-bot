@@ -1017,6 +1017,55 @@ function recordInviteFail(chatId) {
   inviteFails.set(chatId, rec);
 }
 
+// ── Mutation-claim guard ──────────────────────────────────────────────────────
+// Smaller models sometimes NARRATE a completed action ("marqué la tarea como
+// hecha") without ever emitting the tool call, so nothing is actually written.
+// Prompt rules against this have failed repeatedly (Jun 2026, Aug 2026), so the
+// check lives in code: if the reply claims a mutation but no mutating tool ran
+// successfully this turn, force one corrective retry before anything is sent.
+const MUTATING_TOOLS = new Set([
+  'update_task','update_tasks','delete_task','add_task','add_category',
+  'add_debt','update_debt_status',
+  'add_contact','update_contact',
+  'add_calendar_event','update_calendar_event','send_email',
+]);
+
+// A tool result counts as a real mutation only if it is not one of our failure
+// or refusal strings. '(' catches the FEATURE_DENIED directive.
+function toolFailed(result) {
+  return typeof result !== 'string'
+      || /^(Tool error|Unknown tool|No se encontr|No pude verificar|Formato inválido|Nada que actualizar|❌|⚠️|\()/.test(result);
+}
+
+// First-person past tense + past participles + "ya quedó/está listo" phrasings.
+// Deliberately broad: a false positive costs one extra LLM round-trip, while a
+// false negative sends the user a lie.
+// NOTE: \b is useless next to accented letters (é is not \w in JS regex), which
+// silently missed "Marqué"/"eliminé"/"moví". Use Unicode letter lookarounds.
+const NL0 = '(?<!\\p{L})', NL1 = '(?!\\p{L})';
+const CLAIM_RE = new RegExp([
+  // First-person preterite — accent required, so the subjunctive ("que marque")
+  // and English "complete" don't collide.
+  NL0 + '(marqué|completé|eliminé|borré|moví|actualicé|agregué|añadí|registré|creé|guardé|dejé)' + NL1,
+  // Past participles ("marcadas como hechas", "tareas eliminadas").
+  NL0 + '(marcad|completad|eliminad|borrad|movid|actualizad|agregad|añadid|registrad|cread|guardad|hech)[oa]s?' + NL1,
+  NL0 + '(marked|completed|deleted|removed|moved|updated|added|created|saved)' + NL1,
+  '(ya )?(est[áa]n?|qued[óo]|quedaron|quedó) (list[oa]s?|hech[oa]s?)',
+].join('|'), 'iu');
+
+// Only DECLARATIVE sentences can be claims. "¿Quieres que la marque como hecha?"
+// is an offer, so interrogative clauses are stripped before matching.
+function claimsMutation(text) {
+  if (!text) return false;
+  const declarative = text
+    .split(/(?<=[.!?\n])/)
+    .filter(s => !s.includes('¿') && !/\?\s*$/.test(s.trim()))
+    .join(' ');
+  return CLAIM_RE.test(declarative);
+}
+
+const GUARD_CORRECTION = 'VERIFICACIÓN AUTOMÁTICA DEL SISTEMA: tu respuesta afirma haber realizado una acción (marcar, mover, eliminar, agregar o actualizar), pero NO emitiste ninguna tool call en este turno, así que NADA cambió en la base de datos. Si el usuario pidió esa acción, EJECÚTALA AHORA emitiendo la tool correcta (llama list_tasks primero para obtener los [#N] reales si aplica). Si no corresponde ejecutarla, reescribe tu respuesta SIN afirmar que hiciste algo.';
+
 // ── All-done celebration ──────────────────────────────────────────────────────
 // Deterministic Duolingo-style hype: after a turn that marked tasks Done, re-list
 // the user's pending-today tasks and send a separate message if zero remain.
@@ -1098,6 +1147,8 @@ REGLAS DE AÑO:
   const userTools   = filterToolsForUser(user);
   const deadline    = Date.now() + 55000;
   let markedDone    = false;
+  let ranMutation   = false;
+  let guardRetried  = false;
 
   try {
     let response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
@@ -1105,28 +1156,57 @@ REGLAS DE AÑO:
     let msg = response.choices[0].message;
     messages.push(msg);
 
-    while (msg.tool_calls?.length && Date.now() < deadline) {
-      const results = await Promise.all(msg.tool_calls.map(async tc => {
-        const args = JSON.parse(tc.function.arguments || '{}');
-        console.log(`[tool] ${tc.function.name}`, JSON.stringify(args).slice(0,80));
-        const result = await callTool(tc.function.name, args, chatId);
-        if (marksTaskDone(tc.function.name, args) && !/^(Tool error|No se encontr|No pude verificar|\()/.test(result)) markedDone = true;
-        return { tool_call_id:tc.id, role:'tool', content:result };
-      }));
-      messages.push(...results);
+    let reply;
+    for (;;) {
+      while (msg.tool_calls?.length && Date.now() < deadline) {
+        const results = await Promise.all(msg.tool_calls.map(async tc => {
+          const args = JSON.parse(tc.function.arguments || '{}');
+          console.log(`[tool] ${tc.function.name}`, JSON.stringify(args).slice(0,80));
+          const result = await callTool(tc.function.name, args, chatId);
+          const failed = toolFailed(result);
+          console.log(`[tool:done] ${tc.function.name} ${failed ? 'FAILED' : 'ok'}`, String(result).slice(0,120));
+          if (!failed && MUTATING_TOOLS.has(tc.function.name)) ranMutation = true;
+          if (!failed && marksTaskDone(tc.function.name, args)) markedDone = true;
+          return { tool_call_id:tc.id, role:'tool', content:result };
+        }));
+        messages.push(...results);
 
-      if (Date.now() >= deadline) {
-        await sendMessage(chatId, '⚠️ Tardé demasiado. Intenta de nuevo.');
-        return;
+        if (Date.now() >= deadline) {
+          await sendMessage(chatId, '⚠️ Tardé demasiado. Intenta de nuevo.');
+          return;
+        }
+
+        response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
+        if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
+        msg = response.choices[0].message;
+        messages.push(msg);
       }
 
-      response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
-      if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
-      msg = response.choices[0].message;
-      messages.push(msg);
+      reply = msg.content || '(sin respuesta)';
+
+      // Guard: the reply claims an action but nothing was actually written.
+      // Give the model exactly one chance to either perform it or retract it.
+      if (!guardRetried && !ranMutation && claimsMutation(reply) && Date.now() < deadline) {
+        guardRetried = true;
+        console.warn(`[guard] unverified mutation claim → forcing retry (chat ${chatId}):`, reply.slice(0, 120));
+        messages.push({ role:'system', content:GUARD_CORRECTION });
+        response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
+        if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
+        msg = response.choices[0].message;
+        messages.push(msg);
+        continue;
+      }
+
+      // Retry happened and STILL nothing was written: never send the false claim.
+      if (guardRetried && !ranMutation && claimsMutation(reply)) {
+        console.error(`[guard] claim survived retry — suppressing (chat ${chatId})`);
+        reply = user.language === 'en'
+          ? '⚠️ I could not complete that action — nothing was changed. Please try again, ideally naming the task exactly.'
+          : '⚠️ No pude completar esa acción — no se cambió nada. Inténtalo de nuevo, ojalá nombrando la tarea exacta.';
+      }
+      break;
     }
 
-    const reply = msg.content || '(sin respuesta)';
     history.push({ role:'assistant', content:reply });
     await sendMessage(chatId, reply);
     console.log(`[reply → ${chatId}]`, reply.slice(0, 100));
