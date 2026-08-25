@@ -185,6 +185,8 @@ When calling add_task (ONLY — never apply this to calendar events):
 3. If the due date is also missing, ask for it. If you also need category confirmation, ask both in one message.
 4. Call add_task with all confirmed values.
 Never silently assign "Otros" without proposing — always confirm with the user first.
+NEXT STEP FIELD — only pass nextStep when the user EXPLICITLY states a concrete follow-up action ("llamar antes del viernes", "mandar el borrador primero"). Otherwise omit it: an empty nextStep is the correct default. NEVER use nextStep to park leftover, garbled or unparsed words from the user's message, never restate the task in it, and never put due-date wording in it — a phrase like "con vencimiento mañana" / "convencimiento mañana" is a DUE DATE, so it sets dueDateNextStep and nothing else. Voice messages are transcribed automatically and often join or split words; when a fragment looks like transcription noise, drop it rather than storing it.
+When confirming a created or updated task, show only the task name, the category and the due date. NEVER echo nextStep back to the user.
 NEVER ask for category when adding a calendar event — category applies to tasks only.
 CATEGORY INTEGRITY — the tipo you pass to add_task or update_task MUST be an EXISTING category from the list above, matched EXACTLY including accents and casing ("Otros" not "Others", "Golf club" not "golf club"). NEVER invent a new category name through add_task/update_task — that silently creates duplicates. If a task doesn't fit any existing category, propose the closest existing one and confirm with the user.
 To add a NEW category: ONLY when the user EXPLICITLY asks ("agrega la categoría X" / "crea una categoría para Y"). NEVER create a category on your own initiative. Before calling add_category: check the existing list — if the same or a similar category already exists (e.g. the user asks for "Others" but "Otros" exists, or "golf" but "Golf club" exists), DO NOT create it; tell the user it already exists and ask if that is the one they meant. Only if it is genuinely new: infer 3-5 keywords silently, then ASK for explicit confirmation first — "Voy a crear la categoría nueva [name] — ¿la creo?" — and WAIT for a yes before calling add_category. After creating, confirm: "✅ Categoría [name] creada. Ya disponible en la próxima conversación."
@@ -652,10 +654,22 @@ async function sendInviteEmail(to, label, link) {
 }
 
 // ── OpenAI tools ──────────────────────────────────────────────────────────────
+
+// Shared by add_task and update_task. This field used to be an undescribed free-text
+// string, so the model treated it as a dumping ground for leftover words of the user's
+// message (a voice note saying "con vencimiento mañana" was transcribed "Convencimiento
+// mañana" and landed here verbatim on three tasks). Keep it explicitly opt-in.
+const NEXT_STEP_FIELD_DESC =
+  'OPTIONAL. A concrete follow-up action the user EXPLICITLY stated as the next step ' +
+  '(e.g. "llamar antes del viernes", "mandar el borrador primero"). Omit the field ' +
+  'entirely when the user did not state one — an empty nextStep is the correct default. ' +
+  'NEVER put leftover or unparsed words from the user message here, never restate the ' +
+  'task itself, and never put due-date wording here (dates belong in dueDateNextStep).';
+
 const TOOLS = [
   { type:'function', function:{ name:'list_tasks', description:'List tasks with optional filter', parameters:{ type:'object', properties:{ filter:{ type:'string', enum:['all','pending','today','tomorrow','this_week','overdue','overdue_and_today','overdue_today_tomorrow','on_hold'] }, section:{ type:'string' } } } } },
-  { type:'function', function:{ name:'add_task', description:'Add a new task', parameters:{ type:'object', properties:{ toDo:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'}, recurrenceInterval:{type:'number'}, recurrenceUnit:{type:'string'} }, required:['toDo','tipo'] } } },
-  { type:'function', function:{ name:'update_task', description:'Update a single task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } },
+  { type:'function', function:{ name:'add_task', description:'Add a new task', parameters:{ type:'object', properties:{ toDo:{type:'string'}, dueDateNextStep:{type:'string', description:'Due date, YYYY-MM-DD'}, tipo:{type:'string'}, nextStep:{type:'string', description:NEXT_STEP_FIELD_DESC}, isPriority:{type:'boolean'}, recurrenceInterval:{type:'number'}, recurrenceUnit:{type:'string'} }, required:['toDo','tipo'] } } },
+  { type:'function', function:{ name:'update_task', description:'Update a single task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string', description:'Due date, YYYY-MM-DD'}, tipo:{type:'string'}, nextStep:{type:'string', description:NEXT_STEP_FIELD_DESC}, isPriority:{type:'boolean'} }, required:['taskId'] } } },
   { type:'function', function:{ name:'update_tasks', description:'Batch update multiple tasks at once', parameters:{ type:'object', properties:{ updates:{ type:'array', items:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } }, required:['updates'] } } },
   { type:'function', function:{ name:'delete_task', description:'Delete a task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'} }, required:['taskId'] } } },
   { type:'function', function:{ name:'get_usage', description:'Get estimated token usage and cost for a given month. Use when user asks: cuánto hemos gastado, uso de tokens, costo de mayo, reporte de OpenAI, cuánto costó el mes, how much have we spent, monthly cost.', parameters:{ type:'object', properties:{ month:{ type:'string', description:'Month in YYYY-MM format, e.g. "2026-05". Default: current month.' } } } } },
@@ -1413,6 +1427,15 @@ async function downloadFile(url, destPath) {
   });
 }
 
+// Domain vocabulary for Whisper. Without it, Spanish audio reliably joins "con
+// vencimiento" (= "due on") into "Convencimiento". Spanish only — an es hint on
+// English audio would bias transcription the wrong way.
+const VOICE_PROMPT_ES =
+  'Notas sobre tareas, agenda y recordatorios. Vocabulario frecuente: con vencimiento ' +
+  'mañana, con vencimiento el viernes, fecha de vencimiento, próximo paso, prioridad, ' +
+  'pendientes, Ayudantías, bicursos, quizzes, Personal Finance, Berkeley, Whistler, ' +
+  'profesor Robb, networking, follow-up, deuda, calendario.';
+
 async function transcribeVoice(fileId, language) {
   // Step 1: get file path from Telegram
   const fileInfo = await tgRequest('getFile', { file_id: fileId });
@@ -1431,6 +1454,7 @@ async function transcribeVoice(fileId, language) {
       model: 'whisper-1',
       // No language hint → Whisper autodetects (users who haven't picked one yet).
       ...(language ? { language } : {}),
+      ...(language === 'es' ? { prompt: VOICE_PROMPT_ES } : {}),
     });
     return transcription.text;
   } finally {
