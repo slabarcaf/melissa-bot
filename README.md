@@ -11,7 +11,7 @@ Melissa (deployed as "Sydney") is a multi-user AI assistant that lives in Telegr
 - **Natural language task management** — add, update, complete, move, and delete tasks by chatting. Tasks are persisted in a hosted task dashboard. Every mutating action is checked **in code** before Melissa reports success: if her reply claims an action but no mutating tool actually ran, the claim is caught and either retried or replaced with an honest failure (see [Reliability guardrails](#reliability-guardrails)).
 - **Multi-user** — invite-based onboarding with per-user feature flags, brief times, language, and timezone. Task ownership is enforced in app code on top of a single-tenant task dashboard, so each user sees and can modify only their own tasks and debts.
 - **Finance / debts** — track who owes you and what you owe, per user, in SQLite.
-- **Networking follow-ups** — contacts and next steps backed by a Google Sheet.
+- **Networking follow-ups** — contacts and next steps backed by a Google Sheet. **The daily 🤝 section is paused in production** (`networking_paused: true`, 2026-08-26); the tools still work on demand. See [Pausing a brief section](#pausing-a-brief-section).
 - **Dynamic task categories** — categories live in `categories.json` (not hardcoded). Create a new one on the fly by chatting — "agrega la categoría Viajes" — but only with your explicit confirmation, and Melissa first checks that a same/similar category doesn't already exist before creating it.
 - **Google Calendar integration** — add events and get your daily agenda via natural language.
 - **Gmail triage** — scans multiple Gmail accounts and surfaces only emails from real people that need a reply.
@@ -85,7 +85,13 @@ Configuration is read from a **`config.json` file**, not from `.env` — `meliss
   "google_refresh_token": "…",              // primary Gmail/Calendar account
   "google_refresh_token_berkeley": "…",     // secondary account
   "network_sheet_id": "…",            // Networking Google Sheet
-  "timezone": "America/Los_Angeles"
+  "timezone": "America/Los_Angeles",
+
+  // Optional pause flags. Both default to false (absent = false). They suppress a
+  // section of the *push* briefing only — the underlying tools stay live, so the
+  // feature still answers when asked for directly. See "Pausing a brief section".
+  "morning_emails_paused": false,     // drop 📬 EMAILS from the morning brief
+  "networking_paused": true           // drop 🤝 NETWORKING from the morning brief
 }
 ```
 
@@ -187,6 +193,32 @@ The new category is available in the **next conversation** (the MCP server reloa
 
 ---
 
+## Pausing a brief section
+
+Some briefing sections can be switched off without removing any code or changing a
+user's feature flags, via boolean flags in `config.json`:
+
+| Flag | Suppresses | Currently |
+|---|---|---|
+| `morning_emails_paused` | 📬 EMAILS in the morning brief | off (section shows) |
+| `networking_paused` | 🤝 NETWORKING (follow-ups) in the morning brief | **on — paused since 2026-08-26** |
+
+The flag only stops the brief from *calling* the tool (`scan_gmail_for_actions` /
+`list_contacts`), so the section drops out of the push message. Everything else is
+untouched: the tools stay registered, the system-prompt sections stay, and per-user
+`features.*` flags are unchanged — asking for the thing directly still works.
+
+To resume, set the flag to `false` in `config.json` and restart:
+
+```bash
+ssh opc@$VM_HOST 'sudo systemctl restart melissa-bot'
+```
+
+Verify without waiting for the 7 AM cron by running `buildBriefingText` against the
+live config — see the handoff's cheat-sheet.
+
+---
+
 ## Reliability guardrails
 
 > **Design principle, learned the hard way:** prompt rules cannot *make* a model call a tool. The same class of bug — Melissa confirming an action she never performed — recurred three times while the only defense was more system-prompt text. Guarantees that must hold now live in **code**.
@@ -202,6 +234,14 @@ The new category is available in the **next conversation** (the MCP server reloa
 ---
 
 ## Changelog
+
+### 2026-08-26 — nextStep field discipline, networking paused, an open voice-path defect
+- **Symptom:** three tasks were created with the due date right but a bogus `nextStep` of `"Convencimiento mañana"`, echoed back in the confirmation — for a "next step" the user never mentioned.
+- **Root cause (two layers):** a voice note ending "…**con vencimiento** mañana" was transcribed by Whisper as "**Convencimiento** mañana"; the model parsed the date correctly but *also* parked the literal phrase in `nextStep`, which was exposed on `add_task`/`update_task` as an **undescribed** free-text string and was never mentioned in the system prompt — an unlabeled field reads as a dumping ground.
+- **Fixes:** `nextStep` (and `dueDateNextStep`) now carry explicit descriptions via a shared `NEXT_STEP_FIELD_DESC` — opt-in only, never for leftover/garbled words, never for due-date wording; matching rule added to the `add_task` prompt block, plus "never echo `nextStep` in confirmations". Rows 515–517 had `nextStep` cleared via the task API.
+- **Networking:** the daily 🤝 section is paused behind `networking_paused` (see [Pausing a brief section](#pausing-a-brief-section)). Nothing removed.
+- **A Whisper vocabulary prompt was shipped and reverted** — and the revert was a **false alarm**. It was blamed for the bot going silent on voice notes; it was later measured innocent (3/3 real API calls under 2s with the exact string; multipart `Content-Length` correct with accents). The constant survives, unused and documented, in `melissa.js`.
+- **⚠️ Open defect (not fixed):** `tgRequest` and `downloadFile` set **no timeout**. Telegram returned `504 Gateway Timeout` on `getFile`, and because processing is a per-chat FIFO queue, one stalled Telegram request wedges that user's chat **indefinitely** — the bot answers nothing until a restart. This is what actually caused the silence. See the 2026-08-26 handoff.
 
 ### 2026-08-12 — false-completion fix, model upgrade, MCP write hardening
 - **Symptom:** Melissa replied "Marqué como hechas las tareas..." and the next morning's brief still listed the same tasks as pending. Confirmed against the task API — the rows were never written. This was the third recurrence of the same class of bug, after two prompt-only fixes.
