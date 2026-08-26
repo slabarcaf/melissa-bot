@@ -1428,8 +1428,18 @@ async function downloadFile(url, destPath) {
 }
 
 // Domain vocabulary for Whisper. Without it, Spanish audio reliably joins "con
-// vencimiento" (= "due on") into "Convencimiento". Spanish only — an es hint on
-// English audio would bias transcription the wrong way.
+// vencimiento" (= "due on") into "Convencimiento".
+//
+// Currently UNUSED. It was briefly wired into transcribeVoice on 2026-08-25 and
+// reverted the same night, when the bot stopped answering voice notes minutes after
+// the deploy. That revert was a false alarm: the prompt param was later measured
+// against the real API from this VM (3/3 calls under 2s, correct transcription), and
+// a local-listener test showed the accented field encodes fine. The actual stall was
+// in the Telegram legs of the voice path (getFile returned 504 Gateway Timeout), and
+// neither tgRequest nor downloadFile has a timeout, so a stalled Telegram request
+// wedges that chat's FIFO queue indefinitely. Safe to re-enable once those have
+// timeouts; see [voice] handling in the polling loop.
+// eslint-disable-next-line no-unused-vars
 const VOICE_PROMPT_ES =
   'Notas sobre tareas, agenda y recordatorios. Vocabulario frecuente: con vencimiento ' +
   'mañana, con vencimiento el viernes, fecha de vencimiento, próximo paso, prioridad, ' +
@@ -1454,7 +1464,6 @@ async function transcribeVoice(fileId, language) {
       model: 'whisper-1',
       // No language hint → Whisper autodetects (users who haven't picked one yet).
       ...(language ? { language } : {}),
-      ...(language === 'es' ? { prompt: VOICE_PROMPT_ES } : {}),
     });
     return transcription.text;
   } finally {
