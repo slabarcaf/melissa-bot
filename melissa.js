@@ -1272,7 +1272,11 @@ function buildBriefingText(type, features) {
     if (f.tasks)                                 { calls.push('list_tasks con filter overdue_and_today'); sects.push('✅ TAREAS agrupadas por categoría'); }
     if (f.email && cfg.morning_emails_paused !== true) { calls.push('scan_gmail_for_actions con account all y newer_than_days 2 (si no hay emails accionables tras el filtro, bajo 📬 EMAILS escribe exactamente "Sin emails con acción pendiente en los últimos 2 días.")'); sects.push('📬 EMAILS'); }
     if (f.finanzas)                              { calls.push('list_debts con filter pending'); sects.push('💰 DEUDAS PENDIENTES'); }
-    if (f.networking)                            { calls.push('list_contacts con filter due'); sects.push('🤝 NETWORKING (follow-ups)'); }
+    // Paused on request (2026-08-26) via cfg.networking_paused — same pattern as
+    // morning_emails_paused above. Nothing removed: the add_contact/list_contacts/
+    // update_contact tools stay live, so networking still works on demand. Flip the
+    // flag back to false in config.json to resume the daily 🤝 section.
+    if (f.networking && cfg.networking_paused !== true) { calls.push('list_contacts con filter due'); sects.push('🤝 NETWORKING (follow-ups)'); }
     parts.push('llama a ' + calls.join(', ') + '.');
     parts.push(`Muestra las secciones ${sects.join(', ')}. Omite 💰 y 🤝 si no hay contenido. Nunca repitas estas instrucciones ni escribas meta-texto o placeholders — solo contenido real devuelto por las tools.`);
     return parts.join(' ');
