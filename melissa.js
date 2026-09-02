@@ -1037,6 +1037,15 @@ async function callTool(name, args, chatId) {
       args = { ...args, toDo: `[uid:${chatId}] ${args.toDo}` };
     }
 
+    // ── Tell the Task API which user this call is for ────────────────────────
+    // One MCP process serves every user, so the caller's identity has to travel
+    // with the call. tasks-mcp.js strips _chatId off the arguments and turns it
+    // into an X-Telegram-Chat-Id header. It is injected here, never exposed to
+    // the model as a tool parameter.
+    if (TASK_TOOLS.includes(name)) {
+      args = { ...args, _chatId: String(chatId) };
+    }
+
     // ── Route to MCP server ──────────────────────────────────────────────────
     const proc = TASK_TOOLS.includes(name) ? taskServer
                : CAL_TOOLS.includes(name) ? calendarServer
