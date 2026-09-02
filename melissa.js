@@ -185,6 +185,8 @@ When calling add_task (ONLY — never apply this to calendar events):
 3. If the due date is also missing, ask for it. If you also need category confirmation, ask both in one message.
 4. Call add_task with all confirmed values.
 Never silently assign "Otros" without proposing — always confirm with the user first.
+NEXT STEP FIELD — only pass nextStep when the user EXPLICITLY states a concrete follow-up action ("llamar antes del viernes", "mandar el borrador primero"). Otherwise omit it: an empty nextStep is the correct default. NEVER use nextStep to park leftover, garbled or unparsed words from the user's message, never restate the task in it, and never put due-date wording in it — a phrase like "con vencimiento mañana" / "convencimiento mañana" is a DUE DATE, so it sets dueDateNextStep and nothing else. Voice messages are transcribed automatically and often join or split words; when a fragment looks like transcription noise, drop it rather than storing it.
+When confirming a created or updated task, show only the task name, the category and the due date. NEVER echo nextStep back to the user.
 NEVER ask for category when adding a calendar event — category applies to tasks only.
 CATEGORY INTEGRITY — the tipo you pass to add_task or update_task MUST be an EXISTING category from the list above, matched EXACTLY including accents and casing ("Otros" not "Others", "Golf club" not "golf club"). NEVER invent a new category name through add_task/update_task — that silently creates duplicates. If a task doesn't fit any existing category, propose the closest existing one and confirm with the user.
 To add a NEW category: ONLY when the user EXPLICITLY asks ("agrega la categoría X" / "crea una categoría para Y"). NEVER create a category on your own initiative. Before calling add_category: check the existing list — if the same or a similar category already exists (e.g. the user asks for "Others" but "Otros" exists, or "golf" but "Golf club" exists), DO NOT create it; tell the user it already exists and ask if that is the one they meant. Only if it is genuinely new: infer 3-5 keywords silently, then ASK for explicit confirmation first — "Voy a crear la categoría nueva [name] — ¿la creo?" — and WAIT for a yes before calling add_category. After creating, confirm: "✅ Categoría [name] creada. Ya disponible en la próxima conversación."
@@ -652,10 +654,22 @@ async function sendInviteEmail(to, label, link) {
 }
 
 // ── OpenAI tools ──────────────────────────────────────────────────────────────
+
+// Shared by add_task and update_task. This field used to be an undescribed free-text
+// string, so the model treated it as a dumping ground for leftover words of the user's
+// message (a voice note saying "con vencimiento mañana" was transcribed "Convencimiento
+// mañana" and landed here verbatim on three tasks). Keep it explicitly opt-in.
+const NEXT_STEP_FIELD_DESC =
+  'OPTIONAL. A concrete follow-up action the user EXPLICITLY stated as the next step ' +
+  '(e.g. "llamar antes del viernes", "mandar el borrador primero"). Omit the field ' +
+  'entirely when the user did not state one — an empty nextStep is the correct default. ' +
+  'NEVER put leftover or unparsed words from the user message here, never restate the ' +
+  'task itself, and never put due-date wording here (dates belong in dueDateNextStep).';
+
 const TOOLS = [
   { type:'function', function:{ name:'list_tasks', description:'List tasks with optional filter', parameters:{ type:'object', properties:{ filter:{ type:'string', enum:['all','pending','today','tomorrow','this_week','overdue','overdue_and_today','overdue_today_tomorrow','on_hold'] }, section:{ type:'string' } } } } },
-  { type:'function', function:{ name:'add_task', description:'Add a new task', parameters:{ type:'object', properties:{ toDo:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'}, recurrenceInterval:{type:'number'}, recurrenceUnit:{type:'string'} }, required:['toDo'] } } },
-  { type:'function', function:{ name:'update_task', description:'Update a single task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, tipo:{type:'string'}, nextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } },
+  { type:'function', function:{ name:'add_task', description:'Add a new task', parameters:{ type:'object', properties:{ toDo:{type:'string'}, dueDateNextStep:{type:'string', description:'Due date, YYYY-MM-DD'}, tipo:{type:'string'}, nextStep:{type:'string', description:NEXT_STEP_FIELD_DESC}, isPriority:{type:'boolean'}, recurrenceInterval:{type:'number'}, recurrenceUnit:{type:'string'} }, required:['toDo','tipo'] } } },
+  { type:'function', function:{ name:'update_task', description:'Update a single task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string', description:'Due date, YYYY-MM-DD'}, tipo:{type:'string'}, nextStep:{type:'string', description:NEXT_STEP_FIELD_DESC}, isPriority:{type:'boolean'} }, required:['taskId'] } } },
   { type:'function', function:{ name:'update_tasks', description:'Batch update multiple tasks at once', parameters:{ type:'object', properties:{ updates:{ type:'array', items:{ type:'object', properties:{ taskId:{type:'number'}, toDo:{type:'string'}, statusFinalOutcome:{type:'string'}, dueDateNextStep:{type:'string'}, isPriority:{type:'boolean'} }, required:['taskId'] } } }, required:['updates'] } } },
   { type:'function', function:{ name:'delete_task', description:'Delete a task by taskId', parameters:{ type:'object', properties:{ taskId:{type:'number'} }, required:['taskId'] } } },
   { type:'function', function:{ name:'get_usage', description:'Get estimated token usage and cost for a given month. Use when user asks: cuánto hemos gastado, uso de tokens, costo de mayo, reporte de OpenAI, cuánto costó el mes, how much have we spent, monthly cost.', parameters:{ type:'object', properties:{ month:{ type:'string', description:'Month in YYYY-MM format, e.g. "2026-05". Default: current month.' } } } } },
@@ -842,6 +856,15 @@ const TOOL_FEATURE = {
 // so the model paraphrases it naturally instead of parroting a canned sentence.
 const FEATURE_DENIED = '(Esta tool no está habilitada para este usuario. Explica con amabilidad que por ahora solo puedes ayudarle con sus tareas y deudas — sin mencionar tools ni detalles técnicos.)';
 
+// Directive, not user-facing: mirrors FEATURE_DENIED's shape. Returned only as a
+// role:'tool' result so the model reacts by asking/confirming a category itself,
+// per the RULES text at lines 180-190 — never a canned string shown to the user.
+const ADD_TASK_NEEDS_CATEGORY =
+  '(No se creó la tarea porque falta "tipo" (categoría). Pregunta al usuario qué categoría usar ' +
+  '-- o, si ya la habías inferido en este turno, pide su confirmación explícita -- y NO llames ' +
+  'add_task de nuevo hasta tener un tipo confirmado. No menciones "tools", "campos" ni detalles ' +
+  'técnicos; simplemente continúa la conversación de forma natural.)';
+
 // Ownership model for the shared Task Dashboard: a task belongs to a non-Santiago
 // user iff its title carries that user's [uid:CHATID] tag; it belongs to Santiago
 // iff it carries no [uid:] tag at all. Mirrors filterTaskOutput()'s display logic,
@@ -898,6 +921,15 @@ async function callTool(name, args, chatId) {
       } else {
         // Not-found phrasing intentionally hides that the id exists for someone else.
         if (!owned.has(String(args.taskId))) return `No se encontró la tarea [#${args.taskId}].`;
+      }
+    }
+
+    // ── Category-integrity guard (bug fix: silent "Otros" default on add_task) ──
+    // Scoped to add_task only — never update_task (own guardrails) or calendar tools.
+    if (name === 'add_task') {
+      const tipo = args.tipo;
+      if (tipo === undefined || tipo === null || String(tipo).trim() === '') {
+        return ADD_TASK_NEEDS_CATEGORY;
       }
     }
 
@@ -999,6 +1031,76 @@ function recordInviteFail(chatId) {
   inviteFails.set(chatId, rec);
 }
 
+// ── OpenAI request builder ────────────────────────────────────────────────────
+// Single place to build the completion request so the three call sites in a turn
+// (initial, tool loop, guard retry) can never drift apart.
+//
+// GPT-5 family only: reasoning_effort. Measured 2026-08-12 on this exact prompt
+// shape — "minimal" REPRODUCED the bug this guard exists for (it answered "voy a
+// marcar las tareas..." and emitted NO tool call), so never set it. "low" keeps
+// tool-calling reliable at ~2.6s. Reasoning tokens bill as output tokens.
+function chatCreate(messages, tools) {
+  const model = cfg.openai_model;
+  const req = { model, messages, tools, tool_choice:'auto' };
+  const effort = cfg.openai_reasoning_effort;
+  if (/^gpt-5/.test(model || '') && effort && effort !== 'minimal') req.reasoning_effort = effort;
+  return openai.chat.completions.create(req);
+}
+
+// ── Mutation-claim guard ──────────────────────────────────────────────────────
+// Smaller models sometimes NARRATE a completed action ("marqué la tarea como
+// hecha") without ever emitting the tool call, so nothing is actually written.
+// Prompt rules against this have failed repeatedly (Jun 2026, Aug 2026), so the
+// check lives in code: if the reply claims a mutation but no mutating tool ran
+// successfully this turn, force one corrective retry before anything is sent.
+const MUTATING_TOOLS = new Set([
+  'update_task','update_tasks','delete_task','add_task','add_category',
+  'add_debt','update_debt_status',
+  'add_contact','update_contact',
+  'add_calendar_event','update_calendar_event','send_email',
+]);
+
+// A tool result counts as a real mutation only if it is not one of our failure
+// or refusal strings. '(' catches the FEATURE_DENIED directive.
+function toolFailed(result) {
+  if (typeof result !== 'string') return true;
+  // Partial batch write (emitted by tasks-mcp update_tasks): some rows DID
+  // change, so this counts as a real mutation. The model still has the per-task
+  // errors in the result text and must report them — but the claim guard must
+  // NOT overwrite that with "nothing was changed", which would be false.
+  if (/^⚠️ Solo \d+ de \d+/.test(result)) return false;
+  return /^(Tool error|Unknown tool|No se encontr|No pude verificar|Formato inválido|Nada que actualizar|❌|⚠️|\()/.test(result);
+}
+
+// First-person past tense + past participles + "ya quedó/está listo" phrasings.
+// Deliberately broad: a false positive costs one extra LLM round-trip, while a
+// false negative sends the user a lie.
+// NOTE: \b is useless next to accented letters (é is not \w in JS regex), which
+// silently missed "Marqué"/"eliminé"/"moví". Use Unicode letter lookarounds.
+const NL0 = '(?<!\\p{L})', NL1 = '(?!\\p{L})';
+const CLAIM_RE = new RegExp([
+  // First-person preterite — accent required, so the subjunctive ("que marque")
+  // and English "complete" don't collide.
+  NL0 + '(marqué|completé|eliminé|borré|moví|actualicé|agregué|añadí|registré|creé|guardé|dejé)' + NL1,
+  // Past participles ("marcadas como hechas", "tareas eliminadas").
+  NL0 + '(marcad|completad|eliminad|borrad|movid|actualizad|agregad|añadid|registrad|cread|guardad|hech)[oa]s?' + NL1,
+  NL0 + '(marked|completed|deleted|removed|moved|updated|added|created|saved)' + NL1,
+  '(ya )?(est[áa]n?|qued[óo]|quedaron|quedó) (list[oa]s?|hech[oa]s?)',
+].join('|'), 'iu');
+
+// Only DECLARATIVE sentences can be claims. "¿Quieres que la marque como hecha?"
+// is an offer, so interrogative clauses are stripped before matching.
+function claimsMutation(text) {
+  if (!text) return false;
+  const declarative = text
+    .split(/(?<=[.!?\n])/)
+    .filter(s => !s.includes('¿') && !/\?\s*$/.test(s.trim()))
+    .join(' ');
+  return CLAIM_RE.test(declarative);
+}
+
+const GUARD_CORRECTION = 'VERIFICACIÓN AUTOMÁTICA DEL SISTEMA: tu respuesta afirma haber realizado una acción (marcar, mover, eliminar, agregar o actualizar), pero NO emitiste ninguna tool call en este turno, así que NADA cambió en la base de datos. Si el usuario pidió esa acción, EJECÚTALA AHORA emitiendo la tool correcta (llama list_tasks primero para obtener los [#N] reales si aplica). Si no corresponde ejecutarla, reescribe tu respuesta SIN afirmar que hiciste algo.';
+
 // ── All-done celebration ──────────────────────────────────────────────────────
 // Deterministic Duolingo-style hype: after a turn that marked tasks Done, re-list
 // the user's pending-today tasks and send a separate message if zero remain.
@@ -1080,35 +1182,66 @@ REGLAS DE AÑO:
   const userTools   = filterToolsForUser(user);
   const deadline    = Date.now() + 55000;
   let markedDone    = false;
+  let ranMutation   = false;
+  let guardRetried  = false;
 
   try {
-    let response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
+    let response = await chatCreate(messages, userTools);
     if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
     let msg = response.choices[0].message;
     messages.push(msg);
 
-    while (msg.tool_calls?.length && Date.now() < deadline) {
-      const results = await Promise.all(msg.tool_calls.map(async tc => {
-        const args = JSON.parse(tc.function.arguments || '{}');
-        console.log(`[tool] ${tc.function.name}`, JSON.stringify(args).slice(0,80));
-        const result = await callTool(tc.function.name, args, chatId);
-        if (marksTaskDone(tc.function.name, args) && !/^(Tool error|No se encontr|No pude verificar|\()/.test(result)) markedDone = true;
-        return { tool_call_id:tc.id, role:'tool', content:result };
-      }));
-      messages.push(...results);
+    let reply;
+    for (;;) {
+      while (msg.tool_calls?.length && Date.now() < deadline) {
+        const results = await Promise.all(msg.tool_calls.map(async tc => {
+          const args = JSON.parse(tc.function.arguments || '{}');
+          console.log(`[tool] ${tc.function.name}`, JSON.stringify(args).slice(0,80));
+          const result = await callTool(tc.function.name, args, chatId);
+          const failed = toolFailed(result);
+          console.log(`[tool:done] ${tc.function.name} ${failed ? 'FAILED' : 'ok'}`, String(result).slice(0,120));
+          if (!failed && MUTATING_TOOLS.has(tc.function.name)) ranMutation = true;
+          if (!failed && marksTaskDone(tc.function.name, args)) markedDone = true;
+          return { tool_call_id:tc.id, role:'tool', content:result };
+        }));
+        messages.push(...results);
 
-      if (Date.now() >= deadline) {
-        await sendMessage(chatId, '⚠️ Tardé demasiado. Intenta de nuevo.');
-        return;
+        if (Date.now() >= deadline) {
+          await sendMessage(chatId, '⚠️ Tardé demasiado. Intenta de nuevo.');
+          return;
+        }
+
+        response = await chatCreate(messages, userTools);
+        if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
+        msg = response.choices[0].message;
+        messages.push(msg);
       }
 
-      response = await openai.chat.completions.create({ model:cfg.openai_model, messages, tools:userTools, tool_choice:'auto' });
-      if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
-      msg = response.choices[0].message;
-      messages.push(msg);
+      reply = msg.content || '(sin respuesta)';
+
+      // Guard: the reply claims an action but nothing was actually written.
+      // Give the model exactly one chance to either perform it or retract it.
+      if (!guardRetried && !ranMutation && claimsMutation(reply) && Date.now() < deadline) {
+        guardRetried = true;
+        console.warn(`[guard] unverified mutation claim → forcing retry (chat ${chatId}):`, reply.slice(0, 120));
+        messages.push({ role:'system', content:GUARD_CORRECTION });
+        response = await chatCreate(messages, userTools);
+        if (response.usage) logUsage(response.usage.prompt_tokens, response.usage.completion_tokens);
+        msg = response.choices[0].message;
+        messages.push(msg);
+        continue;
+      }
+
+      // Retry happened and STILL nothing was written: never send the false claim.
+      if (guardRetried && !ranMutation && claimsMutation(reply)) {
+        console.error(`[guard] claim survived retry — suppressing (chat ${chatId})`);
+        reply = user.language === 'en'
+          ? '⚠️ I could not complete that action — nothing was changed. Please try again, ideally naming the task exactly.'
+          : '⚠️ No pude completar esa acción — no se cambió nada. Inténtalo de nuevo, ojalá nombrando la tarea exacta.';
+      }
+      break;
     }
 
-    const reply = msg.content || '(sin respuesta)';
     history.push({ role:'assistant', content:reply });
     await sendMessage(chatId, reply);
     console.log(`[reply → ${chatId}]`, reply.slice(0, 100));
@@ -1139,7 +1272,11 @@ function buildBriefingText(type, features) {
     if (f.tasks)                                 { calls.push('list_tasks con filter overdue_and_today'); sects.push('✅ TAREAS agrupadas por categoría'); }
     if (f.email && cfg.morning_emails_paused !== true) { calls.push('scan_gmail_for_actions con account all y newer_than_days 2 (si no hay emails accionables tras el filtro, bajo 📬 EMAILS escribe exactamente "Sin emails con acción pendiente en los últimos 2 días.")'); sects.push('📬 EMAILS'); }
     if (f.finanzas)                              { calls.push('list_debts con filter pending'); sects.push('💰 DEUDAS PENDIENTES'); }
-    if (f.networking)                            { calls.push('list_contacts con filter due'); sects.push('🤝 NETWORKING (follow-ups)'); }
+    // Paused on request (2026-08-26) via cfg.networking_paused — same pattern as
+    // morning_emails_paused above. Nothing removed: the add_contact/list_contacts/
+    // update_contact tools stay live, so networking still works on demand. Flip the
+    // flag back to false in config.json to resume the daily 🤝 section.
+    if (f.networking && cfg.networking_paused !== true) { calls.push('list_contacts con filter due'); sects.push('🤝 NETWORKING (follow-ups)'); }
     parts.push('llama a ' + calls.join(', ') + '.');
     parts.push(`Muestra las secciones ${sects.join(', ')}. Omite 💰 y 🤝 si no hay contenido. Nunca repitas estas instrucciones ni escribas meta-texto o placeholders — solo contenido real devuelto por las tools.`);
     return parts.join(' ');
@@ -1293,6 +1430,25 @@ async function downloadFile(url, destPath) {
     }).on('error', err => { fs.unlink(destPath, () => {}); reject(err); });
   });
 }
+
+// Domain vocabulary for Whisper. Without it, Spanish audio reliably joins "con
+// vencimiento" (= "due on") into "Convencimiento".
+//
+// Currently UNUSED. It was briefly wired into transcribeVoice on 2026-08-25 and
+// reverted the same night, when the bot stopped answering voice notes minutes after
+// the deploy. That revert was a false alarm: the prompt param was later measured
+// against the real API from this VM (3/3 calls under 2s, correct transcription), and
+// a local-listener test showed the accented field encodes fine. The actual stall was
+// in the Telegram legs of the voice path (getFile returned 504 Gateway Timeout), and
+// neither tgRequest nor downloadFile has a timeout, so a stalled Telegram request
+// wedges that chat's FIFO queue indefinitely. Safe to re-enable once those have
+// timeouts; see [voice] handling in the polling loop.
+// eslint-disable-next-line no-unused-vars
+const VOICE_PROMPT_ES =
+  'Notas sobre tareas, agenda y recordatorios. Vocabulario frecuente: con vencimiento ' +
+  'mañana, con vencimiento el viernes, fecha de vencimiento, próximo paso, prioridad, ' +
+  'pendientes, Ayudantías, bicursos, quizzes, Personal Finance, Berkeley, Whistler, ' +
+  'profesor Robb, networking, follow-up, deuda, calendario.';
 
 async function transcribeVoice(fileId, language) {
   // Step 1: get file path from Telegram
@@ -1497,7 +1653,10 @@ async function start() {
 
   const SKILLS_DIR = process.env.SKILLS_DIR || '/root/.openclaw/skills';
   taskServer = startMCPServer(`${SKILLS_DIR}/tasks-mcp.js`,
-    { TASK_API_BASE: cfg.task_api_base, TASK_API_SECRET: cfg.task_api_secret },
+    // OPENAI_MODEL lets get_usage price the report against the model actually in
+    // use instead of a hardcoded gpt-4.1-mini rate.
+    { TASK_API_BASE: cfg.task_api_base, TASK_API_SECRET: cfg.task_api_secret,
+      OPENAI_MODEL: cfg.openai_model },
     taskPending, 'tasks');
   calendarServer = startMCPServer(`${SKILLS_DIR}/calendar-mcp.js`,
     { GOOGLE_CLIENT_ID: cfg.google_client_id, GOOGLE_CLIENT_SECRET: cfg.google_client_secret,
