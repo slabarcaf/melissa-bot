@@ -2,7 +2,20 @@
 
 Melissa (deployed as "Sydney") is a multi-user AI assistant that lives in Telegram. She manages tasks, debts, calendar events, email triage and networking follow-ups — and delivers per-user morning/evening briefings automatically every day.
 
-**Telegram handle:** configured via `telegram_token` in `config.json`
+## Identity and endpoints
+
+| Item | Value |
+|---|---|
+| Telegram bot | **@Melizion_bot** (token in `config.json`) |
+| Owner chat id | `<owner-chat-id>` (Santiago — the admin checks compare against this) |
+| VM | `opc@$VM_HOST`, service `melissa-bot`, runtime `/opt/melissa/whatsapp-bot` |
+| Task API | `https://task-dashboard-nine-ashen.vercel.app` (`task_api_base`) |
+| Task dashboard repo | `~/demo/task-dashboard` → `github.com/slabarcaf/task-dashboard` (private) |
+| Model | `gpt-5-mini`, shared by all users |
+
+Companion docs: `ONBOARDING.md` (how a new user is created), `MODULES.md` (what each module does and
+who may use it), `CLAUDE.md` (invariants), newest `HANDOFF-*.md` (current state), newest `PLAN-*.md`
+(roadmap).
 
 ---
 

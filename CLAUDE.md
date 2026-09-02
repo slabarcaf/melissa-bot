@@ -47,7 +47,9 @@ When production breaks right after a deploy: restart first to restore service, t
 ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST
 ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST 'sudo /root/deploy-melissa.sh [branch]'
 ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST 'sudo journalctl -u melissa-bot -n 50 --no-pager'
-node --check melissa.js   # no test suite exists; this plus SELFCHECK is the validation
+npm test                  # syntax check + 41 unit tests on the pure helpers
+                          # (parsers, name sanitising, Telegram HTML rendering).
+                          # Run this plus SELFCHECK before every deploy.
 ```
 
 Journald is not persistent on this VM. Logs vanish within hours, so capture anything you need while debugging.

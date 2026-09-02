@@ -4,7 +4,8 @@
   "description": "Melissa — personal AI assistant on Telegram powered by OpenAI GPT-4",
   "main": "melissa.js",
   "scripts": {
-    "start": "node melissa.js"
+    "start": "node melissa.js",
+    "test": "node --check melissa.js && node --check db.js && node test.js"
   },
   "author": "Santiago Labarca",
   "license": "MIT",
