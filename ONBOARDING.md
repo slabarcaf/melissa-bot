@@ -27,6 +27,12 @@ These came out of watching the first invited user (the second user) go through v
    that opens with plain text never reveals it.
 4. **Ask language first**, before anything else, so every later message is in the user's language.
 5. **Keep it under ten steps.** It is nine.
+6. **Ask about briefs last.** Until 2026-09-01 it was the third question, before the user had heard
+   the word "task" — "how many summaries do you want" had nothing to attach to. It now comes after
+   the tutorial and the categories, framed as *"everything we just went through, sent to you as a
+   summary"*.
+7. **State the maximum.** There are exactly two brief slots. Asking for three used to silently
+   produce two.
 
 ## Entry: the invite
 
@@ -57,13 +63,13 @@ State lives in `users.onboarding`. Every message the user sends while it is not 
 | 1 | `new` → `awaiting_language` | Welcome + language | — |
 | 2 | `awaiting_language` | Name | `language` |
 | 3 | `awaiting_name` | City + country | `preferred_name` |
-| 4 | `awaiting_location` | Brief times (or confirm timezone) | `timezone` |
-| 4b | `awaiting_tz_confirm` | Brief times | `timezone` |
-| 5 | `awaiting_briefs` | (tutorial part 1) | `brief_morning`, `brief_evening` |
-| 6 | `awaiting_tasks_ack` | (tutorial part 2) | — |
-| 7 | `awaiting_debts_ack` | Preset categories | — |
-| 8 | `awaiting_cats` | Custom categories | `categories` |
-| 9 | `awaiting_custom_cat` → `done` | — | `categories`, `onboarding` |
+| 4 | `awaiting_location` | (timezone confirmed, tutorial part 1) | `timezone` |
+| 4b | `awaiting_tz_confirm` | (tutorial part 1) | `timezone` |
+| 5 | `awaiting_tasks_ack` | (tutorial part 2) | — |
+| 6 | `awaiting_debts_ack` | Preset categories | — |
+| 7 | `awaiting_cats` | Custom categories | `categories` |
+| 8 | `awaiting_custom_cat` | Brief times | `categories` |
+| 9 | `awaiting_briefs` → `done` | — | `brief_morning`, `brief_evening`, `onboarding` |
 
 ### 1. Welcome and language (`new`)
 
@@ -102,7 +108,7 @@ not be able to carry instructions or a fake `[uid:]` tag.
 > ¿En qué ciudad y país estás?
 > (Así te muestro fechas y recordatorios en tu hora local)
 
-### 4. Location → briefs (`awaiting_location`)
+### 4. Location → tutorial (`awaiting_location`)
 
 `parseCityToTimezone` walks `CITY_TZ_TABLE` in order and returns `{ tz, matched }`. It also accepts
 a raw IANA string (`America/Bogota`) if someone types one.
@@ -127,45 +133,27 @@ also fails the guess is kept with an apology and onboarding continues. **One ret
 a user must never be trapped on this question. The timezone is easy to fix later by telling the bot
 a city in normal conversation.
 
-### 5. Brief times (`awaiting_briefs`)
+### 5–6. Tutorial, in two chunks
 
-> ✅ Zona horaria: **{tz}**
->
-> Ahora — ¿quieres que te mande **briefs**? Son resúmenes con tus tareas y pendientes del día.
->
-> Normalmente recomendamos dos: uno en la mañana (7:00 am) y uno en la noche (8:00 pm). Pero dime
-> tú: ¿cuántos quieres y a qué hora?
+Part 1 covers tasks; part 2 covers debts. Each ends with a question, and **any reply advances** — the
+state machine does not try to interpret it. A user who asks a real question here gets moved along;
+the LLM answers it properly once onboarding finishes.
 
-`parseBriefTimes` returns `{ morning, evening }` as `HH:MM`, where `''` means that brief is off:
-
-- A negative answer with no digits (`no`, `ninguno`, `none`, `nada`) → both off.
-- Up to two times are extracted, accepting `7`, `7am`, `19:30`, `8 pm`.
-- `solo`/`only`/`just`/`uno` plus a mention of morning or night restricts it to that one.
-- A single bare hour under 12 with no meridiem is read as morning; if the answer is clearly about
-  the evening it is shifted to PM.
-- With two times, the earlier becomes the morning brief and the later the evening one.
-- **Anything unparseable keeps the 07:00 / 20:00 defaults.** The confirmation always states what was
-  actually set, so a misparse is visible immediately rather than silent.
-
-The confirmation always ends by saying the user can write **at any hour**, not just at brief time.
-That sentence exists because testers assumed the bot only spoke during briefs.
-
-### 6–7. Tutorial, in two chunks
-
-Part 1 covers tasks and completing them; part 2 covers debts. Each ends with a question, and **any
-reply advances** — the state machine does not try to interpret it. A user who asks a real question
-here gets moved along; the LLM answers it properly once onboarding finishes.
+Part 1 must explain **categories**, not just the add-a-task phrasing: every task belongs to one, and
+Sydney proposes one and waits for confirmation when the user does not name it. Without that, the
+confirmation prompt surprises people the first time they add a task.
 
 Full text lives in `OB[lang].tutorialTasks()` and `OB[lang].tutorialDebts()`.
 
-### 8. Preset categories (`awaiting_cats`)
+### 7. Preset categories (`awaiting_cats`)
 
 The eight `PRESET_CATEGORIES` are listed numbered: Work, Estudios, Salud, Personal, Side Projects,
 Finanzas, Networking, Otros. `parseCategorySelection` accepts numbers (`1, 3, 5`) or names,
 case-insensitively. **If nothing parses, it falls back to the first and last preset** (Work + Otros)
-rather than leaving the user with none.
+rather than leaving the user with none. The prompt says custom categories come next, so the list does
+not read as the only choice available.
 
-### 9. Custom categories (`awaiting_custom_cat`)
+### 8. Custom categories (`awaiting_custom_cat`)
 
 > ✅ Categorías guardadas: **{names}**.
 >
@@ -176,6 +164,36 @@ rather than leaving the user with none.
 letters, digits and spaces, capped at 30 characters. Names that duplicate an existing or preset
 category are skipped case-insensitively, and bare affirmations (`sí`, `ok`, `dale`) are filtered out
 so "sí, Viajes" does not create a category called "sí".
+
+### 9. Brief times (`awaiting_briefs`) — the last question
+
+> Un último detalle ⏰
+>
+> Todo esto que acabamos de ver — tus tareas del día y lo que tengas pendiente — te lo puedo mandar
+> resumido en un **brief**, sin que me lo pidas.
+>
+> Puedes tener **hasta dos al día**. Lo típico es uno en la mañana (7:00 am) para saber qué viene, y
+> uno en la noche (8:00 pm) para cerrar.
+>
+> ¿Cuáles quieres, y a qué hora?
+
+`parseBriefTimes` returns `{ morning, evening, tooMany }` as `HH:MM`, where `''` means that brief is
+off:
+
+- A negative answer with no digits (`no`, `ninguno`, `none`, `nada`) → both off.
+- Up to two times are extracted, accepting `7`, `7am`, `19:30`, `8 pm`.
+- `solo`/`only`/`just`/`uno` plus a mention of morning or night restricts it to that one.
+- A single bare hour under 12 with no meridiem is read as morning; if the answer is clearly about
+  the evening it is shifted to PM.
+- With two times, the earlier becomes the morning brief and the later the evening one.
+- **Anything unparseable keeps the 07:00 / 20:00 defaults.** The confirmation always states what was
+  actually set, so a misparse is visible immediately rather than silent.
+- `tooMany` is set when the answer asks for more than two — by count word (`tres`, `four`…) or by
+  naming three or more times. The confirmation then leads with *"I can send you two a day at most,
+  so I kept the first two"* instead of quietly disagreeing with the user.
+
+The confirmation always ends by saying the user can write **at any hour**, not just at brief time.
+That sentence exists because testers assumed the bot only spoke during briefs.
 
 Then: `onboarding = 'done'`, **`scheduleCrons()` is called** so the user's brief crons come into
 existence, and the closing message goes out. A user is invisible to the brief scheduler until this
