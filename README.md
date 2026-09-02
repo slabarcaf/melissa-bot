@@ -15,8 +15,8 @@ Melissa (deployed as "Sydney") is a multi-user AI assistant that lives in Telegr
 
 ### Which account owns what
 
-The system is split across **three different identities**. This is the first thing that blocks
-someone picking the project up, because signing in to one of them is not enough.
+The rule is short: **everything is the Berkeley Google account except GitHub, which is `slabarcaf`.**
+Worth knowing up front, because signing in to one of them is not enough to work on this project.
 
 | Service | Account | Holds |
 |---|---|---|
@@ -24,7 +24,7 @@ someone picking the project up, because signing in to one of them is not enough.
 | **Vercel** | Berkeley (`santiago.labarca@berkeley.edu`) | The task-dashboard deployment, `task-dashboard-c7q2.vercel.app` |
 | **Google Cloud** | Berkeley | OAuth clients — project number `<gcp-project-number>` |
 | Oracle Cloud | — | The VM, reached as `opc@$VM_HOST` with `~/.ssh/id_ed25519` |
-| Neon | *to confirm* | The Postgres database behind the task API |
+| **Neon** | Berkeley | The Postgres database behind the task API — `us-east-1`, host `<neon-host>…aws.neon.tech`. Shared by every Vercel project that has ever pointed at it |
 
 Consequences worth knowing before you touch anything:
 
