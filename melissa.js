@@ -438,16 +438,16 @@ function buildSystemPromptForUser(user) {
   return prompt;
 }
 
-// Filter task list output to only show tasks belonging to chatId.
-// Santiago (original user) sees all tasks without [uid:] prefix.
-// Other users see only tasks tagged [uid:CHATID] and that tag is stripped for display.
-function filterTaskOutput(text, chatId, isSantiago) {
-  const userTag = `[uid:${chatId}]`;
-  return text.split('\n').filter(line => {
-    if (!/ \[#\d+\]/.test(line)) return true; // not a task line — keep header/empty
-    if (isSantiago) return !line.includes('[uid:');
-    return line.includes(userTag);
-  }).map(line => line.replace(new RegExp(`\\[uid:${chatId}\\]\\s*`, 'g'), '')).join('\n');
+// Task isolation is enforced by the API now (2026-09-01): every request carries
+// the caller's chat id, the API resolves it to a users row, and every query is
+// scoped `WHERE user_id = ?`. A user simply cannot receive someone else's task.
+//
+// Before that, the Task Dashboard was single-tenant and everything landed on one
+// account, so isolation was faked by tagging titles with [uid:CHATID] and
+// filtering the tag out here. The tags were migrated away; this only strips any
+// straggler so an old title never shows its plumbing to a user.
+function filterTaskOutput(text) {
+  return text.replace(/\[uid:\d+\]\s*/g, '');
 }
 
 // ── Onboarding state machine ──────────────────────────────────────────────────
@@ -931,30 +931,13 @@ const ADD_TASK_NEEDS_CATEGORY =
   'add_task de nuevo hasta tener un tipo confirmado. No menciones "tools", "campos" ni detalles ' +
   'técnicos; simplemente continúa la conversación de forma natural.)';
 
-// Ownership model for the shared Task Dashboard: a task belongs to a non-Santiago
-// user iff its title carries that user's [uid:CHATID] tag; it belongs to Santiago
-// iff it carries no [uid:] tag at all. Mirrors filterTaskOutput()'s display logic,
-// but enforced authoritatively against the full task list for writes/deletes (F1).
-function taskBelongsTo(toDo, chatId, isSantiago) {
-  const title = toDo || '';
-  if (isSantiago) return !title.includes('[uid:');
-  return title.includes(`[uid:${chatId}]`);
-}
-
-// Fetch ALL tasks straight from the Task API (not the MCP, whose filters hide
-// future/on-hold tasks) and return the set of rowIds the caller may mutate.
-async function ownedTaskIdSet(chatId, isSantiago) {
-  const r = await fetch(`${cfg.task_api_base}/api/tasks`, {
-    headers: { Authorization: `Bearer ${cfg.task_api_secret}` }
-  });
-  if (!r.ok) throw new Error(`Task API HTTP ${r.status}`);
-  const data = await r.json();
-  const set = new Set();
-  for (const t of (data.tasks || [])) {
-    if (taskBelongsTo(t.toDo, chatId, isSantiago)) set.add(String(t.rowId));
-  }
-  return set;
-}
+// The app-level ownership check that used to live here (security item F1) was a
+// workaround for a single-tenant API: it fetched every task and compared
+// [uid:CHATID] tags before allowing an update or delete. Since 2026-09-01 the API
+// scopes each request to the caller's own user row, so a mutation aimed at
+// someone else's task returns 404 from the database itself — a stronger guarantee
+// than a string comparison in this process, and one that cannot be bypassed by a
+// bug in the bot. Verified by an authenticated cross-user request returning 404.
 
 async function callTool(name, args, chatId) {
   const isSantiago = String(chatId) === String(cfg.telegram_chat_id);
@@ -969,24 +952,6 @@ async function callTool(name, args, chatId) {
         const u = db.getUser(chatId);
         const features = u ? JSON.parse(u.features || '{}') : {};
         if (!features[reqFeat]) return FEATURE_DENIED;
-      }
-    }
-
-    // ── F1: task ownership enforcement — block cross-user update/delete (IDOR) ─
-    // The Task Dashboard is single-tenant; a raw taskId could belong to anyone.
-    // Verify ownership before any mutating task call. Fail closed on API error.
-    if (['update_task','delete_task','update_tasks'].includes(name)) {
-      let owned;
-      try { owned = await ownedTaskIdSet(chatId, isSantiago); }
-      catch (e) { return 'No pude verificar la tarea ahora. Intenta de nuevo.'; }
-      if (name === 'update_tasks') {
-        const updates = Array.isArray(args.updates) ? args.updates : [];
-        const allowed = updates.filter(u => owned.has(String(u.taskId)));
-        if (allowed.length === 0) return 'No se encontraron esas tareas.';
-        args = { ...args, updates: allowed };
-      } else {
-        // Not-found phrasing intentionally hides that the id exists for someone else.
-        if (!owned.has(String(args.taskId))) return `No se encontró la tarea [#${args.taskId}].`;
       }
     }
 
@@ -1032,11 +997,6 @@ async function callTool(name, args, chatId) {
       return `✅ Categoría "${catName}" creada. Ya disponible en la próxima conversación.`;
     }
 
-    // ── Task isolation: tag new tasks for non-Santiago users ─────────────────
-    if (name === 'add_task' && !isSantiago) {
-      args = { ...args, toDo: `[uid:${chatId}] ${args.toDo}` };
-    }
-
     // ── Tell the Task API which user this call is for ────────────────────────
     // One MCP process serves every user, so the caller's identity has to travel
     // with the call. tasks-mcp.js strips _chatId off the arguments and turns it
@@ -1060,7 +1020,7 @@ async function callTool(name, args, chatId) {
                                : JSON.stringify(result);
 
     // ── Task output: filter to only this user's tasks ─────────────────────────
-    if (name === 'list_tasks') text = filterTaskOutput(text, chatId, isSantiago);
+    if (name === 'list_tasks') text = filterTaskOutput(text);
 
     return text;
   } catch (err) { return `Tool error: ${err.message}`; }
