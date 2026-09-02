@@ -91,6 +91,19 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
 .pitch h1 em{font-style:normal;color:var(--amber)}
 .pitch p{color:#B9BEE0;max-width:38ch;margin:0 0 34px;font-size:15.5px}
 
+/* las dos puertas: mismo dato, dos formas de entrar. Es el argumento del producto. */
+.doors{display:flex;align-items:center;gap:13px;margin-bottom:34px;flex-wrap:wrap}
+.door{display:flex;align-items:center;gap:11px;padding:11px 15px;border-radius:var(--r);
+  background:rgba(237,239,251,.07);border:1px solid rgba(237,239,251,.14);min-width:0}
+.door .ic{font-size:17px;opacity:.9;flex:0 0 auto}
+.door b{display:block;font-size:14px;font-family:"Sora";font-weight:600}
+.door span{display:block;font-size:12.5px;color:#A2A9D4}
+.link{flex:0 0 auto;position:relative;height:1px;width:52px;background:rgba(237,239,251,.24)}
+.link span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  background:var(--night-1);padding:0 7px;font-size:10.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:#8E95C4;white-space:nowrap;font-family:"Sora";font-weight:600}
+@media (max-width:520px){.link{display:none}}
+
 /* el arco del día: 7:00 ─ ahora ─ 20:00. La estructura real del producto. */
 .arc{border-top:1px solid rgba(237,239,251,.14);padding-top:20px;max-width:400px}
 .arc .lbl{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#8E95C4;margin-bottom:13px;font-family:"Sora";font-weight:600}
@@ -129,7 +142,11 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
 .rail a.on{background:var(--brand-soft);color:var(--brand);font-weight:600}
 .rail a .ic{width:17px;text-align:center;opacity:.9}
 .rail a .count{margin-left:auto;font-size:12px;font-weight:700;color:var(--ink-3)}
-.rail .foot{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 8px 0;border-top:1px solid var(--line)}
+.rail .foot{margin-top:auto;display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:11px 8px;margin-bottom:-4px;border-top:1px solid var(--line);border-radius:10px;transition:background .13s}
+.rail .foot:hover{background:var(--raised)}
+.rail .foot .gear{margin-left:auto;color:var(--ink-3);font-size:14px}
+.rail .foot:hover .gear{color:var(--ink)}
 .rail .av{width:29px;height:29px;border-radius:50%;background:var(--brand);color:var(--brand-ink);
   display:grid;place-items:center;font-weight:700;font-size:12.5px}
 .rail .who{font-size:13px;line-height:1.25;overflow:hidden}
@@ -231,6 +248,53 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
 .palette .grp{padding:9px 13px 4px;font-size:10.5px;font-weight:700;letter-spacing:.12em;
   text-transform:uppercase;color:var(--ink-3)}
 
+/* ════ AJUSTES ═══════════════════════════════════════════
+   Todo lo de la cuenta vive aquí, y aquí se guarda en la base:
+   tema, idioma, zona horaria, briefs. Un solo botón de guardar. */
+.sheet{position:fixed;inset:0;z-index:85;background:rgba(21,26,58,.5);backdrop-filter:blur(3px);
+  display:flex;justify-content:flex-end}
+.sheet[hidden]{display:none}
+.panel{width:min(460px,100%);background:var(--surface);height:100%;overflow-y:auto;
+  box-shadow:var(--shadow-lg);display:flex;flex-direction:column}
+.panel-h{position:sticky;top:0;background:var(--surface);z-index:1;
+  padding:22px 26px 16px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:14px}
+.panel-h .av{width:40px;height:40px;border-radius:50%;background:var(--brand);color:var(--brand-ink);
+  display:grid;place-items:center;font-weight:700;font-size:15px;flex:0 0 auto}
+.panel-h h2{font-size:19px;font-weight:600}
+.panel-h .mail{color:var(--ink-3);font-size:13px}
+.panel-h .x{margin-left:auto;color:var(--ink-3);font-size:19px;line-height:1}
+.panel-b{padding:22px 26px;flex:1;display:flex;flex-direction:column;gap:26px}
+.grp-t{font-size:11.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 0;
+  border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row .lab b{display:block;font-size:14.5px;font-weight:500}
+.row .lab span{display:block;font-size:12.5px;color:var(--ink-3);margin-top:1px}
+.pick{display:flex;gap:3px;background:var(--sunken);padding:3px;border-radius:9px;border:1px solid var(--line)}
+.pick button{padding:5px 11px;border-radius:7px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.pick button[aria-pressed="true"]{background:var(--surface);color:var(--brand);box-shadow:var(--shadow)}
+.fld{border:1px solid var(--line-2);background:var(--raised);color:var(--ink);
+  border-radius:9px;padding:7px 11px;font:inherit;font-size:14px}
+.fld:focus{outline:none;border-color:var(--brand)}
+.sw{width:42px;height:24px;border-radius:14px;background:var(--line-2);position:relative;flex:0 0 auto;transition:background .15s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;
+  background:#fff;transition:left .17s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.sw[aria-pressed="true"]{background:var(--brand)}
+.sw[aria-pressed="true"]::after{left:21px}
+.cats{display:flex;flex-wrap:wrap;gap:7px}
+.cats .c{font-size:13px;padding:5px 12px;border-radius:999px;border:1.5px solid var(--line-2);
+  background:var(--surface);color:var(--ink-2)}
+.cats .c[aria-pressed="true"]{border-color:var(--brand);background:var(--brand);color:var(--brand-ink);font-weight:600}
+.cats .c.add{border-style:dashed;color:var(--brand)}
+.panel-f{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  padding:15px 26px;display:flex;align-items:center;gap:12px}
+.panel-f .save{background:var(--brand);color:var(--brand-ink);font-weight:600;font-size:14.5px;
+  padding:10px 20px;border-radius:10px}
+.panel-f .save[disabled]{opacity:.45;cursor:not-allowed}
+.panel-f .dirty{font-size:12.5px;color:var(--amber);font-weight:600}
+.panel-f .ghost{margin-left:auto;color:var(--ink-3);font-size:13.5px}
+
 /* ════ toast con deshacer ════ */
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:90;
   display:flex;align-items:center;gap:14px;padding:11px 15px;border-radius:var(--r);
@@ -259,27 +323,36 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
   </div>
   <span class="spacer"></span>
   <button class="kbd" id="openK">Paleta <kbd>⌘</kbd><kbd>K</kbd></button>
-  <div class="seg">
-    <button id="tLight">Claro</button>
-    <button id="tDark">Oscuro</button>
-    <button id="tSys" aria-pressed="true">Sistema</button>
-  </div>
+  <button class="kbd" data-settings>⚙ Ajustes</button>
 </div>
 
-<p class="lab-note">Tareas reales de tu cuenta. Nada está conectado — es para acordar la dirección antes de tocar producción. Prueba <b>⌘K</b>, marca una tarea, y cambia entre claro y oscuro.</p>
+<p class="lab-note">Tareas reales de tu cuenta. Nada está conectado — es para acordar la dirección antes de tocar producción. Prueba <b>⌘K</b>, marca una tarea para ver el "Deshacer", y abre <b>Ajustes</b> (o pulsa tu nombre abajo a la izquierda) para el tema y los briefs.</p>
 
 <!-- ═══ ACCESO ═══ -->
 <section class="screen" id="s-signin">
   <div class="signin">
     <div class="pitch">
       <div class="logo"><span class="mark">S</span><b>Sydney</b></div>
-      <h1>Tu día, <em>ordenado</em> antes de que empiece.</h1>
-      <p>Tareas, deudas y agenda en un solo lugar. Te escribo dos veces al día con lo que importa — y me puedes preguntar a cualquier hora.</p>
+      <h1>Una lista. <em>Dos formas</em> de llegar a ella.</h1>
+      <p>Escríbele por Telegram como a una persona, o ábrela aquí y ordénala con el mouse. Son la misma cuenta y las mismas tareas — lo que anotas en el bus aparece en tu escritorio.</p>
+
+      <div class="doors">
+        <div class="door">
+          <span class="ic">✈</span>
+          <div><b>Telegram</b><span>“pagar la luz el viernes”</span></div>
+        </div>
+        <div class="link"><span>misma cuenta</span></div>
+        <div class="door">
+          <span class="ic">▤</span>
+          <div><b>Aquí</b><span>ver, ordenar, arrastrar</span></div>
+        </div>
+      </div>
+
       <div class="arc">
-        <div class="lbl">Tu día con Sydney</div>
+        <div class="lbl">Y te escribe dos veces al día</div>
         <div class="track"><span class="pin" style="left:47%"></span></div>
         <div class="ends">
-          <span>☀ 7:00 · brief de la mañana</span>
+          <span>☀ 7:00 · lo que viene hoy</span>
           <span>☾ 20:00 · cierre del día</span>
         </div>
       </div>
@@ -306,10 +379,11 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
       <a data-goto="board"><span class="ic">▤</span>Tablero</a>
       <a><span class="ic">✓</span>Completadas</a>
       <a><span class="ic">💰</span>Deudas<span class="count">3</span></a>
-      <div class="foot">
+      <button class="foot" data-settings>
         <span class="av">S</span>
         <span class="who"><b>Santiago</b><span>Berkeley · 7:00 / 20:00</span></span>
-      </div>
+        <span class="gear">⚙</span>
+      </button>
     </nav>
     <div class="main">
       <div class="top">
@@ -391,10 +465,11 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
       <a class="on"><span class="ic">▤</span>Tablero</a>
       <a><span class="ic">✓</span>Completadas</a>
       <a><span class="ic">💰</span>Deudas<span class="count">3</span></a>
-      <div class="foot">
+      <button class="foot" data-settings>
         <span class="av">S</span>
         <span class="who"><b>Santiago</b><span>Berkeley · 7:00 / 20:00</span></span>
-      </div>
+        <span class="gear">⚙</span>
+      </button>
     </nav>
     <div class="main">
       <div class="top">
@@ -473,6 +548,104 @@ button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
   </div>
 </div>
 
+<div class="sheet" id="sheet" hidden>
+  <div class="panel" role="dialog" aria-label="Ajustes de la cuenta">
+    <div class="panel-h">
+      <span class="av">S</span>
+      <div><h2>Santiago</h2><div class="mail">santiago.labarca@berkeley.edu</div></div>
+      <button class="x" id="closeSet" aria-label="Cerrar">✕</button>
+    </div>
+
+    <div class="panel-b">
+      <div>
+        <div class="grp-t">Apariencia</div>
+        <div class="row">
+          <div class="lab"><b>Tema</b><span>Sigue tu dispositivo si eliges Sistema</span></div>
+          <div class="pick" id="themePick">
+            <button data-t="light">Claro</button>
+            <button data-t="dark">Oscuro</button>
+            <button data-t="" aria-pressed="true">Sistema</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="lab"><b>Idioma</b><span>También el que usa Sydney en Telegram</span></div>
+          <select class="fld" data-dirty><option>Español</option><option>English</option></select>
+        </div>
+      </div>
+
+      <div>
+        <div class="grp-t">Briefs</div>
+        <div class="row">
+          <div class="lab"><b>En la mañana</b><span>Lo que viene hoy</span></div>
+          <div style="display:flex;align-items:center;gap:11px">
+            <input type="time" class="fld num" value="07:00" data-dirty>
+            <button class="sw" aria-pressed="true" data-sw></button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="lab"><b>En la noche</b><span>Cierre y agenda de mañana</span></div>
+          <div style="display:flex;align-items:center;gap:11px">
+            <input type="time" class="fld num" value="20:00" data-dirty>
+            <button class="sw" aria-pressed="true" data-sw></button>
+          </div>
+        </div>
+        <p style="font-size:12.5px;color:var(--ink-3);margin:10px 0 0">
+          Son dos como máximo. Llegan por Telegram; puedes escribirle a cualquier hora igual.
+        </p>
+      </div>
+
+      <div>
+        <div class="grp-t">Ubicación</div>
+        <div class="row">
+          <div class="lab"><b>Zona horaria</b><span>Define a qué hora llegan los briefs</span></div>
+          <select class="fld" data-dirty>
+            <option>America/Los_Angeles · Berkeley</option>
+            <option>America/Santiago</option>
+            <option>America/New_York</option>
+            <option>Europe/Madrid</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <div class="grp-t">Categorías</div>
+        <div class="cats" id="cats">
+          <button class="c" aria-pressed="true">Work</button>
+          <button class="c" aria-pressed="true">Personal</button>
+          <button class="c" aria-pressed="true">Finanzas</button>
+          <button class="c" aria-pressed="true">Golf club</button>
+          <button class="c">Estudios</button>
+          <button class="c">Salud</button>
+          <button class="c">Networking</button>
+          <button class="c" aria-pressed="true">Otros</button>
+          <button class="c add">+ Añadir</button>
+        </div>
+        <p style="font-size:12.5px;color:var(--ink-3);margin:11px 0 0">
+          Cada tarea va en una. Si no eliges, Sydney propone la más probable y te la muestra antes de guardar.
+        </p>
+      </div>
+
+      <div>
+        <div class="grp-t">Cuenta</div>
+        <div class="row">
+          <div class="lab"><b>Telegram</b><span>Vinculado a @Melizion_bot</span></div>
+          <span style="font-size:13px;color:var(--ok);font-weight:600">✓ Conectado</span>
+        </div>
+        <div class="row">
+          <div class="lab"><b>Cerrar sesión</b><span>En este navegador</span></div>
+          <button class="fld" style="color:var(--late);font-weight:600">Salir</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-f">
+      <button class="save" id="saveBtn" disabled>Guardar cambios</button>
+      <span class="dirty" id="dirtyLbl" hidden>Sin guardar</span>
+      <button class="ghost" id="closeSet2">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" hidden><span id="toastMsg">Tarea completada</span><button id="undo">Deshacer</button></div>
 
 <script>
@@ -486,14 +659,10 @@ document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>show(b.dataset.s)
 document.querySelectorAll('[data-goto]').forEach(a=>a.onclick=()=>show(a.dataset.goto));
 
 /* tema */
-const setT=(v,el)=>{
+const setT=v=>{
   if(v) document.documentElement.setAttribute('data-theme',v);
   else document.documentElement.removeAttribute('data-theme');
-  [$('tLight'),$('tDark'),$('tSys')].forEach(b=>b.setAttribute('aria-pressed',String(b===el)));
 };
-$('tLight').onclick=e=>setT('light',e.target);
-$('tDark').onclick=e=>setT('dark',e.target);
-$('tSys').onclick=e=>setT(null,e.target);
 
 /* ⌘K */
 const openK=()=>{$('scrim').hidden=false;$('pq').focus();};
@@ -528,10 +697,41 @@ $('cap').addEventListener('input',e=>{
   $('capParsed').innerHTML=out.map(([k,v])=>`<span class="pill-mini ${k}">${v}</span>`).join('');
 });
 
+/* ajustes: se abre desde el usuario, y solo guarda cuando hay algo que guardar */
+const openSet=()=>{$('sheet').hidden=false;};
+const closeSet=()=>{$('sheet').hidden=true;};
+document.querySelectorAll('[data-settings]').forEach(b=>b.onclick=openSet);
+$('closeSet').onclick=closeSet; $('closeSet2').onclick=closeSet;
+$('sheet').onclick=e=>{if(e.target===$('sheet'))closeSet();};
+
+let dirty=false;
+const markDirty=()=>{
+  dirty=true; $('saveBtn').disabled=false; $('dirtyLbl').hidden=false;
+};
+document.querySelectorAll('[data-dirty]').forEach(el=>el.addEventListener('change',markDirty));
+document.querySelectorAll('[data-sw]').forEach(b=>b.onclick=()=>{
+  b.setAttribute('aria-pressed',String(b.getAttribute('aria-pressed')!=='true')); markDirty();
+});
+document.querySelectorAll('#cats .c:not(.add)').forEach(b=>b.onclick=()=>{
+  b.setAttribute('aria-pressed',String(b.getAttribute('aria-pressed')!=='true')); markDirty();
+});
+$('themePick').querySelectorAll('button').forEach(b=>b.onclick=()=>{
+  $('themePick').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  setT(b.dataset.t||null);
+  markDirty();
+});
+$('saveBtn').onclick=()=>{
+  dirty=false; $('saveBtn').disabled=true; $('dirtyLbl').hidden=true;
+  toast('Preferencias guardadas', null);
+  closeSet();
+};
+
 /* completar con deshacer, en vez de confirmar */
 let undoFn=null,tHide=null;
 const toast=(msg,fn)=>{
-  $('toastMsg').textContent=msg; undoFn=fn; $('toast').hidden=false;
+  $('toastMsg').textContent=msg; undoFn=fn||null;
+  $('undo').hidden=!fn;
+  $('toast').hidden=false;
   clearTimeout(tHide); tHide=setTimeout(()=>{$('toast').hidden=true;undoFn=null;},4200);
 };
 $('undo').onclick=()=>{ if(undoFn)undoFn(); $('toast').hidden=true; undoFn=null; };
