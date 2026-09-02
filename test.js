@@ -73,14 +73,24 @@ is(M.parseLanguageChoice('inglés'), 'en', 'language: inglés');
 is(M.parseLanguageChoice('mmm no sé'), 'es', 'language: unrecognised defaults to es');
 
 // ── brief times ──────────────────────────────────────────────────────────────
-is(M.parseBriefTimes('7am y 8pm'), { morning: '07:00', evening: '20:00' }, 'briefs: 7am y 8pm');
-is(M.parseBriefTimes('los dos, como recomiendas'), { morning: '07:00', evening: '20:00' }, 'briefs: defaults');
-is(M.parseBriefTimes('solo en la mañana'), { morning: '07:00', evening: '' }, 'briefs: morning only');
-is(M.parseBriefTimes('solo el de la noche a las 9'), { morning: '', evening: '21:00' }, 'briefs: evening only at 9');
-is(M.parseBriefTimes('no quiero briefs'), { morning: '', evening: '' }, 'briefs: none');
-is(M.parseBriefTimes('a las 7:30 y a las 21:00'), { morning: '07:30', evening: '21:00' }, 'briefs: explicit times');
-is(M.parseBriefTimes('only one at 8pm'), { morning: '', evening: '20:00' }, 'briefs: English, evening only');
-is(M.parseBriefTimes('7 y 8'), { morning: '07:00', evening: '20:00' }, 'briefs: bare hours, later one becomes PM');
+const briefs = (t) => { const r = M.parseBriefTimes(t); return { morning: r.morning, evening: r.evening }; };
+is(briefs('7am y 8pm'), { morning: '07:00', evening: '20:00' }, 'briefs: 7am y 8pm');
+is(briefs('los dos, como recomiendas'), { morning: '07:00', evening: '20:00' }, 'briefs: defaults');
+is(briefs('solo en la mañana'), { morning: '07:00', evening: '' }, 'briefs: morning only');
+is(briefs('solo el de la noche a las 9'), { morning: '', evening: '21:00' }, 'briefs: evening only at 9');
+is(briefs('no quiero briefs'), { morning: '', evening: '' }, 'briefs: none');
+is(briefs('a las 7:30 y a las 21:00'), { morning: '07:30', evening: '21:00' }, 'briefs: explicit times');
+is(briefs('only one at 8pm'), { morning: '', evening: '20:00' }, 'briefs: English, evening only');
+is(briefs('7 y 8'), { morning: '07:00', evening: '20:00' }, 'briefs: bare hours, later one becomes PM');
+
+// Only two briefs exist. Asking for three used to silently yield two; now the
+// caller is told, so the confirmation can say so instead of quietly disagreeing.
+is(M.parseBriefTimes('tres').tooMany, true, 'briefs: "tres" is flagged as too many');
+is(M.parseBriefTimes('quiero tres al dia').tooMany, true, 'briefs: count word in a sentence is flagged');
+is(M.parseBriefTimes('a las 7, 14 y 20').tooMany, true, 'briefs: three times given is flagged');
+is(M.parseBriefTimes('7am y 8pm').tooMany, false, 'briefs: two is not flagged');
+is(M.parseBriefTimes('no quiero briefs').tooMany, false, 'briefs: none is not flagged');
+is(M.parseBriefTimes('tres')  .morning, '07:00', 'briefs: "tres" still falls back to the defaults');
 
 // ── name sanitising (security F6) ────────────────────────────────────────────
 is(M.sanitizeName('the second user'), 'the second user', 'name: plain');

@@ -303,18 +303,20 @@ const OB = {
     askLocation: (n) => `¡Mucho gusto, ${n}! 👋\n\n¿En qué ciudad y país estás?\n(Así te muestro fechas y recordatorios en tu hora local)`,
     tzConfirm: (tz) => `Mmm, no ubico bien esa ciudad 😅 Voy a asumir la zona horaria *${tz}*.\n\n¿Está bien? (responde *sí*, o dime otra ciudad)`,
     tzKept: (tz) => `Ok, dejo *${tz}* por ahora. Si no es la correcta, más adelante solo dime en qué ciudad estás y la ajusto.`,
-    askBriefs: (tz) => `✅ Zona horaria: *${tz}*\n\nAhora — ¿quieres que te mande *briefs*? Son resúmenes con tus tareas y pendientes del día.\n\nNormalmente recomendamos dos: uno en la mañana (7:00 am) y uno en la noche (8:00 pm). Pero dime tú: ¿cuántos quieres y a qué hora?`,
-    briefsSet: (m, e) => {
+    tzSaved: (tz) => `✅ Zona horaria: *${tz}*`,
+    askBriefs: () => `Un último detalle ⏰\n\nTodo esto que acabamos de ver — tus tareas del día y lo que tengas pendiente — te lo puedo mandar resumido en un *brief*, sin que me lo pidas.\n\nPuedes tener *hasta dos al día*. Lo típico es uno en la mañana (7:00 am) para saber qué viene, y uno en la noche (8:00 pm) para cerrar.\n\n¿Cuáles quieres, y a qué hora?`,
+    briefsSet: (m, e, tooMany) => {
       let s;
       if (m && e)      s = `✅ Listo: brief de la mañana a las *${m}* y de la noche a las *${e}*.`;
       else if (m)      s = `✅ Listo: un brief diario en la mañana a las *${m}*.`;
       else if (e)      s = `✅ Listo: un brief diario en la noche a las *${e}*.`;
       else             s = `✅ Ok, sin briefs programados. Si cambias de opinión, solo pídemelo.`;
+      if (tooMany) s = `Puedo mandarte *máximo dos al día*, así que me quedé con los dos primeros 🙂\n\n` + s;
       return s + `\n\nY ojo 👀 — no soy solo briefs: escríbeme lo que necesites *a cualquier hora del día* y te respondo al momento.`;
     },
-    tutorialTasks: () => `Te muestro rápido cómo funciono — parte 1 de 2 📋\n\n*TAREAS*\nPara agregar una tarea solo dime qué hay que hacer y para cuándo (hoy, mañana, el viernes, 15-jul…). Yo te confirmo la categoría antes de guardar.\n\nEj: _"agrega tarea: revisar el contrato, para el jueves"_\n\nY cuando la termines, dímelo en palabras simples: _"ya la hice"_, _"listo lo del contrato"_ ✅\n\n¿Alguna duda? Respóndeme lo que sea y seguimos.`,
-    tutorialDebts: () => `Parte 2 de 2 💰\n\n*DEUDAS*\nTambién llevo el registro de quién te debe y a quién le debes.\n\nEj: _"Juan me debe 50 dólares por un asado"_\nEj: _"le debo a María 200 pesos"_\n\nY cuando se pague: _"ya le pagué a Juan"_ o _"María ya me pagó"_ ✅\n\n¿Todo claro? Respóndeme y vamos con lo último.`,
-    askCats: (list) => `Último paso 📂\n\n¿Qué categorías quieres usar para organizar tus tareas?\n\n${list}\n\nEscribe los números separados por coma (ej: 1, 3, 5) o los nombres.`,
+    tutorialTasks: () => `Te muestro rápido cómo funciono — parte 1 de 2 📋\n\n*TAREAS*\nPara agregar una tarea dime qué hay que hacer y para cuándo (hoy, mañana, el viernes, 15-jul…).\n\nEj: _"agrega tarea: revisar el contrato, para el jueves"_\n\nCada tarea va en una *categoría*, para que después las veas ordenadas. Si no me dices cuál, te propongo una y espero tu confirmación antes de guardar. También puedes decirla de una: _"agrega tarea: pagar la luz el viernes, en finanzas"_.\n\nY cuando la termines, dímelo en palabras simples: _"ya la hice"_, _"listo lo del contrato"_ ✅\n\n¿Alguna duda? Respóndeme lo que sea y seguimos.`,
+    tutorialDebts: () => `Parte 2 de 2 💰\n\n*DEUDAS*\nTambién llevo el registro de quién te debe y a quién le debes.\n\nEj: _"Juan me debe 50 dólares por un asado"_\nEj: _"le debo a María 200 pesos"_\n\nY cuando se pague: _"ya le pagué a Juan"_ o _"María ya me pagó"_ ✅\n\n¿Todo claro? Respóndeme y elegimos tus categorías.`,
+    askCats: (list) => `Ahora tus categorías 📂\n\nSon las que acabo de mencionar: cada tarea va en una. Elige las que uses de esta lista y en el paso siguiente puedes *crear las tuyas*.\n\n${list}\n\nEscribe los números separados por coma (ej: 1, 3, 5) o los nombres.`,
     askCustomCats: (names) => `✅ Categorías guardadas: *${names}*.\n\n¿Quieres agregar alguna categoría tuya? Dime los nombres separados por coma (ej: _Viajes, Iglesia_) — o responde *no*.`,
     customAdded: (names) => `✅ Agregué: *${names}*.`,
     done: (n) => `¡Todo listo, ${n}! 🎉 Cuando quieras, empieza — por texto o nota de voz 🎤`,
@@ -324,18 +326,20 @@ const OB = {
     askLocation: (n) => `Nice to meet you, ${n}! 👋\n\nLet me know your city and country.\n(That way I show dates and reminders in your local time)`,
     tzConfirm: (tz) => `Hmm, I don't recognize that city 😅 I'll assume the *${tz}* timezone.\n\nIs that right? (reply *yes*, or tell me another city)`,
     tzKept: (tz) => `Ok, I'll keep *${tz}* for now. If it's not right, just tell me your city later and I'll fix it.`,
-    askBriefs: (tz) => `✅ Timezone: *${tz}*\n\nNow — do you want me to send you *briefs*? They're summaries of your tasks and pending items for the day.\n\nWe usually recommend two: one in the morning (7:00 am) and one at night (8:00 pm). But you tell me: how many do you want, and at what times?`,
-    briefsSet: (m, e) => {
+    tzSaved: (tz) => `✅ Timezone: *${tz}*`,
+    askBriefs: () => `One last thing ⏰\n\nEverything we just went through — your tasks for the day and whatever is pending — I can send you as a summary, a *brief*, without you asking.\n\nYou can have *up to two a day*. The usual setup is one in the morning (7:00 am) to see what's coming, and one at night (8:00 pm) to wrap up.\n\nWhich ones do you want, and at what times?`,
+    briefsSet: (m, e, tooMany) => {
       let s;
       if (m && e)      s = `✅ Done: morning brief at *${m}* and evening brief at *${e}*.`;
       else if (m)      s = `✅ Done: one daily brief in the morning at *${m}*.`;
       else if (e)      s = `✅ Done: one daily brief in the evening at *${e}*.`;
       else             s = `✅ Ok, no scheduled briefs. If you change your mind, just ask.`;
+      if (tooMany) s = `I can send you *two a day at most*, so I kept the first two 🙂\n\n` + s;
       return s + `\n\nAnd heads up 👀 — I'm not just briefs: message me whatever you need *at any time of day* and I'll answer right away.`;
     },
-    tutorialTasks: () => `Quick tour of how I work — part 1 of 2 📋\n\n*TASKS*\nTo add a task just tell me what needs to get done and by when (today, tomorrow, Friday, 15-Jul…). I'll confirm the category before saving.\n\nE.g.: _"add task: review the contract, due Thursday"_\n\nAnd when you finish it, just say so in plain words: _"done"_, _"finished the contract thing"_ ✅\n\nAny questions? Reply anything and we'll keep going.`,
-    tutorialDebts: () => `Part 2 of 2 💰\n\n*DEBTS*\nI also keep track of who owes you and who you owe.\n\nE.g.: _"Juan owes me 50 dollars for a barbecue"_\nE.g.: _"I owe María 200 pesos"_\n\nAnd when it's paid: _"I paid Juan back"_ or _"María paid me"_ ✅\n\nAll clear? Reply and we'll do the last step.`,
-    askCats: (list) => `Last step 📂\n\nWhich categories do you want to use to organize your tasks?\n\n${list}\n\nType the numbers separated by commas (e.g. 1, 3, 5) or the names.`,
+    tutorialTasks: () => `Quick tour of how I work — part 1 of 2 📋\n\n*TASKS*\nTo add a task, tell me what needs to get done and by when (today, tomorrow, Friday, 15-Jul…).\n\nE.g.: _"add task: review the contract, due Thursday"_\n\nEvery task lives in a *category*, so you can see them grouped later. If you don't name one, I'll suggest one and wait for your OK before saving. You can also say it upfront: _"add task: pay the electricity bill Friday, in finances"_.\n\nAnd when you finish it, just say so in plain words: _"done"_, _"finished the contract thing"_ ✅\n\nAny questions? Reply anything and we'll keep going.`,
+    tutorialDebts: () => `Part 2 of 2 💰\n\n*DEBTS*\nI also keep track of who owes you and who you owe.\n\nE.g.: _"Juan owes me 50 dollars for a barbecue"_\nE.g.: _"I owe María 200 pesos"_\n\nAnd when it's paid: _"I paid Juan back"_ or _"María paid me"_ ✅\n\nAll clear? Reply and let's pick your categories.`,
+    askCats: (list) => `Now your categories 📂\n\nThese are the ones I just mentioned: every task goes in one. Pick the ones you use from this list — in the next step you can *create your own*.\n\n${list}\n\nType the numbers separated by commas (e.g. 1, 3, 5) or the names.`,
     askCustomCats: (names) => `✅ Categories saved: *${names}*.\n\nWant to add categories of your own? Tell me the names separated by commas (e.g. _Travel, Church_) — or reply *no*.`,
     customAdded: (names) => `✅ Added: *${names}*.`,
     done: (n) => `All set, ${n}! 🎉 Start whenever you want — text or voice note 🎤`,
@@ -355,7 +359,13 @@ function parseLanguageChoice(text) {
 // defaults — the confirmation message always states what was actually set.
 function parseBriefTimes(text) {
   const t = (text || '').toLowerCase();
-  if (!/\d/.test(t) && /\b(no|ninguno|ningun[ao]|none|nada|nope)\b/.test(t)) return { morning: '', evening: '' };
+  if (!/\d/.test(t) && /\b(no|ninguno|ningun[ao]|none|nada|nope)\b/.test(t)) return { morning: '', evening: '', tooMany: false };
+
+  // Only two briefs exist (brief_morning, brief_evening). Someone who asks for
+  // three — by count word or by naming three times — gets told, instead of
+  // silently receiving two.
+  const tooMany = /\b(tres|cuatro|cinco|seis|three|four|five|six)\b/.test(t)
+    || (t.match(/(\d{1,2})(?::(\d{2}))?(?:\s*[ap]\.?m\.?)?/g) || []).length > 2;
 
   const found = [];
   const re = /(\d{1,2})(?::(\d{2}))?(?:\s*([ap])\.?m\.?)?/g;
@@ -395,7 +405,7 @@ function parseBriefTimes(text) {
     if (wantMorning) morning = fmt(a);
     if (wantEvening) { if (b.h < 12 && !b.explicit) b.h += 12; evening = fmt(b); }
   }
-  return { morning, evening };
+  return { morning, evening, tooMany };
 }
 
 function filterToolsForUser(user) {
@@ -492,8 +502,9 @@ async function handleOnboarding(chatId, user, text) {
   if (state === 'awaiting_location') {
     const { tz, matched } = parseCityToTimezone(text);
     if (matched) {
-      db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_briefs' });
-      await sendMessage(chatId, T.askBriefs(tz));
+      db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_tasks_ack' });
+      await sendMessage(chatId, T.tzSaved(tz));
+      await sendMessage(chatId, T.tutorialTasks());
     } else {
       // Unrecognized city: store the Americas guess and ask before moving on.
       db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_tz_confirm' });
@@ -510,15 +521,8 @@ async function handleOnboarding(chatId, user, text) {
       if (retry.matched) tz = retry.tz;
       else await sendMessage(chatId, T.tzKept(tz)); // one retry, then keep the guess
     }
-    db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_briefs' });
-    await sendMessage(chatId, T.askBriefs(tz));
-    return;
-  }
-
-  if (state === 'awaiting_briefs') {
-    const { morning, evening } = parseBriefTimes(text);
-    db.updateUser(chatId, { brief_morning: morning, brief_evening: evening, onboarding: 'awaiting_tasks_ack' });
-    await sendMessage(chatId, T.briefsSet(morning, evening));
+    db.updateUser(chatId, { timezone: tz, onboarding: 'awaiting_tasks_ack' });
+    await sendMessage(chatId, T.tzSaved(tz));
     await sendMessage(chatId, T.tutorialTasks());
     return;
   }
@@ -564,8 +568,19 @@ async function handleOnboarding(chatId, user, text) {
         await sendMessage(chatId, T.customAdded(added.join(', ')));
       }
     }
-    db.updateUser(chatId, { onboarding: 'done' });
+    // Briefs come last on purpose: the question only makes sense once the user
+    // knows what a task is. Asked third, as it was until 2026-09-01, people did
+    // not understand what was being summarised.
+    db.updateUser(chatId, { onboarding: 'awaiting_briefs' });
+    await sendMessage(chatId, T.askBriefs());
+    return;
+  }
+
+  if (state === 'awaiting_briefs') {
+    const { morning, evening, tooMany } = parseBriefTimes(text);
+    db.updateUser(chatId, { brief_morning: morning, brief_evening: evening, onboarding: 'done' });
     scheduleCrons(); // user is now 'done' → give them their brief crons
+    await sendMessage(chatId, T.briefsSet(morning, evening, tooMany));
     const name = (db.getUser(chatId) || {}).preferred_name || (lang === 'en' ? 'you' : 'tú');
     await sendMessage(chatId, T.done(name));
     return;
