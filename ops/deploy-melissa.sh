@@ -1,8 +1,8 @@
 #!/bin/bash
 # Deploy melissa-bot from GitHub to the hardened NON-ROOT runtime (/opt/melissa).
-# Usage: /root/deploy-melissa.sh [branch]   (default: pause-morning-brief)
+# Usage: /root/deploy-melissa.sh [branch]   (default: main)
 set -e
-BRANCH="${1:-pause-morning-brief}"
+BRANCH="${1:-main}"
 REPO_DIR=/root/melissa-bot
 DEST=/opt/melissa/whatsapp-bot
 SKILLS=/opt/melissa/.openclaw/skills

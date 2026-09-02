@@ -16,7 +16,7 @@ Do not add project status to this file. Status goes in a new dated handoff, so i
 
 ## Invariants (violating these breaks production)
 
-- **Production runs the `pause-morning-brief` branch, not `main`.** `main` is many commits behind. Never assume the default branch is what is live.
+- **Production runs `main`.** Resolved 2026-09-01: `pause-morning-brief` was merged into `main`, the deploy script now defaults to `main`, and the stale branch is gone. Older handoffs say prod runs `pause-morning-brief` — that is history, not current state.
 - **Always compare the repo against the VM before editing.** The deployed file has diverged from the repo before.
   ```bash
   ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST 'sudo md5sum /opt/melissa/whatsapp-bot/whatsapp-bot.js'
@@ -29,6 +29,7 @@ Do not add project status to this file. Status goes in a new dated handoff, so i
 - **Restart after every deploy:** `sudo systemctl restart melissa-bot`. Verify with `systemctl is-active`.
 - **Only one process may poll the Telegram token at a time.** Two pollers silently steal each other's updates.
 - **Multi-tenant behavior sits on a single-tenant Task Dashboard.** Per-user isolation is enforced in app code. Do not assume the API isolates anything.
+- **The Task Dashboard is the other half of this system and lives in a different repo.** Source: `~/demo/task-dashboard` → `github.com/slabarcaf/task-dashboard` (private). Next.js 14 + TypeScript + Tailwind on Vercel, Postgres on Neon. Live at `https://task-dashboard-nine-ashen.vercel.app`, which is `task_api_base` in the bot's `config.json`. It already has a web UI: Google sign-in, list and 6-column canvas views, filters, edit modal. The bot authenticates to it with a bearer token (`OPENCLAW_API_SECRET` there, `task_api_secret` here — same value, two names). **That token resolves every bot user to one owner account**, so all Telegram users currently share one task list, separated only by the `[uid:CHATID]` tag the bot writes into task titles.
 
 ## Reliability history (read before touching mutations or the voice path)
 
