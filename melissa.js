@@ -1600,6 +1600,58 @@ async function poll() {
         continue;
       }
 
+      // ── Connect a web account: /link CODE ────────────────────────────────
+      // Handled before the authorization check on purpose: whoever sends this
+      // has an account on the web but does not exist to the bot yet, which is
+      // exactly what the command is for.
+      if (/^\/link\b/i.test(text)) {
+        const code = text.replace(/^\/link\b/i, '').trim().toUpperCase();
+        if (!code) {
+          await sendMessage(chatId, 'Para conectar tu cuenta, abre el dashboard en tu navegador, entra a *Ajustes → Telegram* y escribe aquí el código que te muestra:\n\n<code>/link TUCODIGO</code>');
+          continue;
+        }
+        // Same brute-force throttle as invite codes: both are short secrets.
+        if (inviteThrottled(chatId)) { continue; }
+        try {
+          const res = await fetch(`${cfg.task_api_base}/api/telegram/redeem`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${cfg.task_api_secret}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, chatId: String(chatId) }),
+          });
+          const data = await res.json().catch(() => ({}));
+
+          if (!data.ok) {
+            recordInviteFail(chatId);
+            const why = {
+              not_found:  'Ese código no existe. Genera uno nuevo desde Ajustes → Telegram en el dashboard.',
+              expired:    'Ese código ya venció — duran 15 minutos. Genera uno nuevo desde el dashboard.',
+              used:       'Ese código ya se usó. Genera uno nuevo desde el dashboard.',
+              chat_taken: 'Este Telegram ya está conectado a otra cuenta. Desconéctalo primero desde esa cuenta.',
+            }[data.reason] || 'No pude conectar la cuenta. Intenta de nuevo en un momento.';
+            await sendMessage(chatId, `❌ ${why}`);
+            continue;
+          }
+
+          // The web half is linked. Now give them a bot-side record so the chat
+          // is authorized, and run the normal onboarding to collect the things
+          // only the bot needs: language, timezone and brief times.
+          const existing = db.getUser(chatId);
+          if (!existing) {
+            db.createUser(chatId, { name: data.user.name || 'Amigo', features: { tasks: true, finanzas: true } });
+            console.log(`[link] ${fromName} (${chatId}) → ${data.user.email}`);
+            await sendMessage(chatId, `✅ Listo, quedaste conectado como *${data.user.name || data.user.email}*.\n\nTus tareas son las mismas aquí y en el dashboard. Ahora unas preguntas rápidas para dejarte configurado 👇`);
+            await handleOnboarding(chatId, db.getUser(chatId), '');
+          } else {
+            console.log(`[link] ${fromName} (${chatId}) re-linked → ${data.user.email}`);
+            await sendMessage(chatId, `✅ Conectado como *${data.user.name || data.user.email}*. Tus tareas son las mismas aquí y en el dashboard.`);
+          }
+        } catch (err) {
+          console.error('[link error]', err.message);
+          await sendMessage(chatId, '❌ No pude hablar con el dashboard ahora mismo. Intenta de nuevo en un minuto.');
+        }
+        continue;
+      }
+
       // ── Invite claim: /start CODE ─────────────────────────────────────────
       if (text.startsWith('/start ')) {
         const code  = text.slice(7).trim();
