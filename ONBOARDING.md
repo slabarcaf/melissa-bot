@@ -8,6 +8,12 @@ signs up on the web and one who signs up on Telegram end up with different accou
 Implementation: `handleOnboarding()` in `melissa.js`, message strings in the `OB` table and
 `OB_WELCOME` just above it. Everything a step writes goes to the `users` table in `db.js`.
 
+**To try the flow without a Telegram account, open `onboarding-lab.html`** in a browser — a
+self-contained sandbox with no backend. It runs the real state machine and ports the parsers
+verbatim, so answers behave exactly as they do in production, and a side panel shows what each one
+writes to the user row. It also carries a first-cut proposal for the web version. When the flow
+changes, update the lab in the same commit or it starts lying.
+
 ## Design rules (why it looks like this)
 
 These came out of watching the first invited user (the second user) go through v1 in July 2026. Keep them.

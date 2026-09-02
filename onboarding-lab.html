@@ -1,0 +1,733 @@
+<title>Sydney Onboarding Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --bg:#F1F6F5; --surface:#FFFFFF; --surface-2:#E7EFED; --surface-3:#DCE7E4;
+  --ink:#0F201E; --muted:#556B68; --line:#D2DFDC;
+  --accent:#0E7C6B; --accent-ink:#FFFFFF; --accent-soft:#D8EDE8;
+  --warm:#A8620F; --warm-soft:#F6E7D2;
+  --bubble-bot:#FFFFFF; --bubble-bot-ink:#0F201E;
+  --bubble-me:#0E7C6B; --bubble-me-ink:#FFFFFF;
+  --phone-bg:#E4EDEB;
+  --shadow:0 1px 2px rgba(15,32,30,.06),0 8px 24px rgba(15,32,30,.07);
+  --r:14px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0A1312; --surface:#12201E; --surface-2:#182926; --surface-3:#20342F;
+    --ink:#E2EEEB; --muted:#8CA5A0; --line:#263B37;
+    --accent:#2FAB94; --accent-ink:#04201B; --accent-soft:#123430;
+    --warm:#DFA054; --warm-soft:#2E2417;
+    --bubble-bot:#1B2C29; --bubble-bot-ink:#E2EEEB;
+    --bubble-me:#2FAB94; --bubble-me-ink:#04201B;
+    --phone-bg:#0E1B19;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0A1312; --surface:#12201E; --surface-2:#182926; --surface-3:#20342F;
+  --ink:#E2EEEB; --muted:#8CA5A0; --line:#263B37;
+  --accent:#2FAB94; --accent-ink:#04201B; --accent-soft:#123430;
+  --warm:#DFA054; --warm-soft:#2E2417;
+  --bubble-bot:#1B2C29; --bubble-bot-ink:#E2EEEB;
+  --bubble-me:#2FAB94; --bubble-me-ink:#04201B;
+  --phone-bg:#0E1B19;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Source Sans 3",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  font-size:16px; line-height:1.55; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:"Bricolage Grotesque","Source Sans 3",system-ui,sans-serif;text-wrap:balance;margin:0}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px}
+
+/* header */
+header{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between;margin-bottom:22px}
+.brand h1{font-size:clamp(26px,3.4vw,38px);font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.brand p{margin:6px 0 0;color:var(--muted);max-width:56ch}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 6px
+}
+.hbtns{display:flex;gap:8px;flex-wrap:wrap}
+
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 13px;transition:background .15s,border-color .15s,transform .05s}
+button:hover{background:var(--surface-2)}
+button:active{transform:translateY(1px)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn-accent{background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600}
+.btn-accent:hover{background:var(--accent);filter:brightness(1.08)}
+.btn-sm{padding:5px 10px;font-size:13px;border-radius:8px}
+
+/* tabs */
+.tabs{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:12px;width:fit-content;margin-bottom:20px;border:1px solid var(--line)}
+.tab{border:none;background:transparent;padding:8px 16px;border-radius:9px;color:var(--muted);font-weight:600;font-size:14px}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+
+/* layout */
+.lab{display:grid;grid-template-columns:minmax(0,380px) minmax(0,1fr);gap:22px;align-items:start}
+@media (max-width:880px){.lab{grid-template-columns:1fr}}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.card-h{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.card-h h3{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.card-b{padding:16px}
+
+/* phone */
+.phone{background:var(--phone-bg);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;height:min(74vh,660px)}
+.phone-top{background:var(--surface);padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:700;font-size:15px;flex:0 0 auto}
+.phone-top b{font-size:14.5px;display:block;line-height:1.2}
+.phone-top span{font-size:12px;color:var(--muted)}
+.chat{flex:1 1 auto;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:9px;scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){.chat{scroll-behavior:auto}}
+.msg{max-width:85%;padding:9px 12px;border-radius:15px;font-size:14.5px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;box-shadow:0 1px 1px rgba(15,32,30,.07)}
+.msg.bot{background:var(--bubble-bot);color:var(--bubble-bot-ink);align-self:flex-start;border-bottom-left-radius:5px}
+.msg.me{background:var(--bubble-me);color:var(--bubble-me-ink);align-self:flex-end;border-bottom-right-radius:5px}
+.msg b{font-weight:700}
+.msg code{font-family:"IBM Plex Mono",monospace;font-size:.9em;background:var(--surface-2);color:var(--ink);padding:1px 5px;border-radius:5px}
+.msg.typing{color:var(--muted);font-style:italic}
+
+.composer{flex:0 0 auto;border-top:1px solid var(--line);background:var(--surface);padding:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;min-height:0}
+.chip{border:1px dashed var(--line);background:transparent;color:var(--accent);font-size:12.5px;padding:4px 10px;border-radius:20px}
+.chip:hover{background:var(--accent-soft);border-style:solid}
+.crow{display:flex;gap:8px}
+.crow input{
+  flex:1;font:inherit;font-size:14.5px;padding:9px 12px;border-radius:20px;
+  border:1px solid var(--line);background:var(--bg);color:var(--ink)
+}
+.crow input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+
+/* inspector */
+.kv{display:grid;grid-template-columns:auto 1fr;gap:7px 14px;font-size:13.5px;align-items:baseline}
+.kv dt{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);letter-spacing:.02em}
+.kv dd{margin:0;font-family:"IBM Plex Mono",monospace;font-size:12.5px;word-break:break-word}
+.kv dd.empty{color:var(--muted);opacity:.6}
+.flash{animation:fl 1s ease}
+@keyframes fl{0%{background:var(--accent-soft)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.flash{animation:none}}
+
+.state-pill{display:inline-flex;align-items:center;gap:7px;font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--accent-soft);color:var(--accent);padding:5px 10px;border-radius:8px;font-weight:500}
+.state-pill.done{background:var(--warm-soft);color:var(--warm)}
+.steps{display:flex;gap:3px;margin-top:12px}
+.steps i{height:4px;flex:1;background:var(--surface-3);border-radius:2px}
+.steps i.on{background:var(--accent)}
+.note{font-size:13px;color:var(--muted);margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line)}
+
+.parsed{background:var(--surface-2);border-radius:10px;padding:11px 13px;margin-top:14px;font-size:13px}
+.parsed h4{margin:0 0 6px;font-size:11px;font-family:"IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.parsed p{margin:0;font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.6}
+
+/* web proposal */
+.web{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.web-head{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.web-head .avatar{width:30px;height:30px;font-size:13px}
+.prog{display:flex;align-items:center;gap:8px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted)}
+.prog .bar{width:130px;height:5px;background:var(--surface-3);border-radius:3px;overflow:hidden}
+.prog .bar i{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .3s ease}
+@media (prefers-reduced-motion:reduce){.prog .bar i{transition:none}}
+.web-body{padding:34px 24px 30px;max-width:640px;margin:0 auto}
+.web-body h2{font-size:clamp(21px,2.6vw,28px);font-weight:800;letter-spacing:-.02em;margin-bottom:6px}
+.web-body .sub{color:var(--muted);margin:0 0 24px;font-size:15px}
+.web-foot{padding:16px 24px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;background:var(--surface-2)}
+
+.pick{display:grid;gap:10px;grid-template-columns:1fr 1fr}
+@media (max-width:520px){.pick{grid-template-columns:1fr}}
+.opt{
+  text-align:left;padding:15px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);
+  display:flex;flex-direction:column;gap:2px
+}
+.opt b{font-size:15px}
+.opt span{font-size:13px;color:var(--muted)}
+.opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.opt[aria-pressed="true"] span{color:var(--accent)}
+
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.field label{font-size:13px;font-weight:600;color:var(--muted)}
+.field input[type=text],.field input[type=time]{
+  font:inherit;font-size:16px;padding:11px 13px;border-radius:10px;border:1.5px solid var(--line);
+  background:var(--surface);color:var(--ink);width:100%
+}
+.field input:focus{outline:none;border-color:var(--accent)}
+.hint{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;min-height:20px}
+.hint b{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+
+.toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;margin-bottom:10px}
+.toggle-row.on{border-color:var(--accent);background:var(--accent-soft)}
+.toggle-row .tl b{display:block;font-size:14.5px}
+.toggle-row .tl span{font-size:13px;color:var(--muted)}
+.toggle-row .tr{display:flex;align-items:center;gap:10px}
+.sw{width:42px;height:24px;border-radius:14px;background:var(--surface-3);border:none;padding:0;position:relative;flex:0 0 auto}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--surface);transition:left .18s ease;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sw[aria-pressed="true"]{background:var(--accent)}
+.sw[aria-pressed="true"]::after{left:21px}
+@media (prefers-reduced-motion:reduce){.sw::after{transition:none}}
+
+.tagwrap{display:flex;flex-wrap:wrap;gap:8px}
+.tag{border:1.5px solid var(--line);background:var(--surface);padding:7px 14px;border-radius:20px;font-size:14px}
+.tag[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:600}
+.tag.custom{border-style:dashed;color:var(--accent)}
+
+.summary{display:grid;gap:9px}
+.srow{display:flex;justify-content:space-between;gap:14px;padding:11px 14px;background:var(--surface-2);border-radius:10px;font-size:14px}
+.srow span{color:var(--muted)}
+.srow b{font-family:"IBM Plex Mono",monospace;font-size:13px;text-align:right}
+
+.callout{display:flex;gap:11px;padding:13px 15px;border-radius:11px;background:var(--warm-soft);border:1px solid color-mix(in srgb,var(--warm) 30%,transparent);font-size:13.5px;margin-top:20px}
+.callout b{color:var(--warm)}
+
+.diffs{margin-top:22px}
+.diffs h3{font-size:15px;margin-bottom:10px}
+.diffs ul{margin:0;padding-left:0;list-style:none;display:grid;gap:8px}
+.diffs li{display:flex;gap:10px;font-size:14px;color:var(--muted);line-height:1.5}
+.diffs li::before{content:"→";color:var(--accent);font-family:"IBM Plex Mono",monospace;flex:0 0 auto}
+.diffs li b{color:var(--ink);font-weight:600}
+.hidden{display:none!important}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <p class="eyebrow">Banco de pruebas · sin backend</p>
+      <h1>Sydney Onboarding Lab</h1>
+      <p>El flujo real de Telegram, con la misma lógica de parseo que corre en producción — y una primera propuesta de cómo se vería en la web.</p>
+    </div>
+    <div class="hbtns">
+      <button class="btn-sm" id="langBtn">Idioma del bot: <b id="langLbl">auto</b></button>
+      <button class="btn-sm" id="resetBtn">Reiniciar</button>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-view="tg">Telegram (lo que existe hoy)</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="web">Web (propuesta)</button>
+  </div>
+
+  <!-- ── TELEGRAM ───────────────────────────────────────────── -->
+  <section id="view-tg" class="lab">
+    <div class="card phone">
+      <div class="phone-top">
+        <div class="avatar">S</div>
+        <div><b>Sydney</b><span>bot · en línea</span></div>
+      </div>
+      <div class="chat" id="chat" aria-live="polite"></div>
+      <div class="composer">
+        <div class="chips" id="chips"></div>
+        <form class="crow" id="form">
+          <input id="input" type="text" placeholder="Escribe tu respuesta…" autocomplete="off" aria-label="Tu respuesta">
+          <button class="btn-accent" type="submit">Enviar</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">
+        <h3>Qué se guarda en la base</h3>
+        <span class="state-pill" id="statePill">new</span>
+      </div>
+      <div class="card-b">
+        <dl class="kv" id="kv"></dl>
+        <div class="steps" id="steps"></div>
+        <div class="parsed" id="parsed">
+          <h4>Último parseo</h4>
+          <p id="parsedTxt">Aún no has respondido nada.</p>
+        </div>
+        <p class="note">Esta columna es el punto del ejercicio: cada respuesta escribe algo concreto en la fila del usuario. Prueba <b>“Caracas”</b> — el orden de la tabla de ciudades evita que caiga en horario de California, y hay un test que lo protege.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── WEB PROPOSAL ──────────────────────────────────────── -->
+  <section id="view-web" class="hidden">
+    <div class="web">
+      <div class="web-head">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="avatar">S</div>
+          <div><b style="font-size:15px">Configura tu asistente</b></div>
+        </div>
+        <div class="prog"><span id="progTxt">1 / 5</span><span class="bar"><i id="progBar" style="width:20%"></i></span></div>
+      </div>
+      <div class="web-body" id="webBody"></div>
+      <div class="web-foot">
+        <button id="webBack">Atrás</button>
+        <button class="btn-accent" id="webNext">Continuar</button>
+      </div>
+    </div>
+
+    <div class="diffs">
+      <h3>Qué cambia respecto a Telegram, y por qué</h3>
+      <ul>
+        <li><b>La ciudad muestra la zona horaria mientras escribes.</b> En Telegram hay que adivinar y confirmar en un paso aparte; aquí el resultado es visible al instante, así que ese paso desaparece.</li>
+        <li><b>Los horarios usan selectores de hora reales.</b> Se elimina todo el parseo de “solo en la mañana a las 7:30”, que es la parte más frágil del flujo actual.</li>
+        <li><b>Las categorías se tocan, no se numeran.</b> Nadie tiene que escribir “1, 3, 5”.</li>
+        <li><b>El tutorial deja de ser obligatorio.</b> En Telegram son dos mensajes que hay que responder para avanzar; en la web es una tarjeta que se lee o se ignora.</li>
+        <li><b>Se puede volver atrás.</b> Hoy un dato mal escrito solo se arregla con <code>/resetuser</code>, que únicamente Santiago puede ejecutar.</li>
+      </ul>
+      <div class="callout">
+        <span>⚠️</span>
+        <div><b>Lo que no debe cambiar:</b> las preguntas, su orden y lo que cada una guarda. Si las dos puertas de entrada divergen, un usuario que entre por la web y otro por Telegram terminan con cuentas distintas. <code>ONBOARDING.md</code> es la especificación de ambas.</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+
+/* ────────────────────────────────────────────────────────────
+   Lógica portada 1:1 desde melissa.js. Si cambias el bot,
+   cambia también aquí — o el laboratorio miente.
+   ──────────────────────────────────────────────────────────── */
+
+const PRESET_CATEGORIES = [
+  {name:'Work'},{name:'Estudios'},{name:'Salud'},{name:'Personal'},
+  {name:'Side Projects'},{name:'Finanzas'},{name:'Networking'},{name:'Otros'}
+];
+
+// El orden importa: los países terminados en "la" van ANTES de \bla\b.
+const CITY_TZ_TABLE = [
+  [/santiago|chile/,'America/Santiago'],
+  [/bolivia|la paz/,'America/La_Paz'],
+  [/venezuela|caracas/,'America/Caracas'],
+  [/guatemala/,'America/Guatemala'],
+  [/bogot|colombia|medell|barranquilla/,'America/Bogota'],
+  [/lima|per[uú]\b/,'America/Lima'],
+  [/quito|guayaquil|ecuador/,'America/Guayaquil'],
+  [/montevideo|uruguay/,'America/Montevideo'],
+  [/asunci|paraguay/,'America/Asuncion'],
+  [/buenos aires|argentina|c[oó]rdoba|mendoza/,'America/Argentina/Buenos_Aires'],
+  [/s[aã]o paulo|sao paulo|brasil|brazil|rio de janeiro/,'America/Sao_Paulo'],
+  [/panam/,'America/Panama'],
+  [/costa rica/,'America/Costa_Rica'],
+  [/honduras|tegucigalpa/,'America/Tegucigalpa'],
+  [/el salvador/,'America/El_Salvador'],
+  [/nicaragua|managua/,'America/Managua'],
+  [/m[eé]xico|mexico|cdmx|guadalajara|monterrey/,'America/Mexico_City'],
+  [/miami|florida|orlando|tampa/,'America/New_York'],
+  [/new york|nyc|\bny\b|east coast|boston|washington|philadelphia|atlanta|toronto|montreal/,'America/New_York'],
+  [/chicago|illinois|houston|dallas|austin|texas/,'America/Chicago'],
+  [/denver|colorado|salt lake/,'America/Denver'],
+  [/phoenix|arizona/,'America/Phoenix'],
+  [/madrid|barcelona|spain|espa[ñn]a/,'Europe/Madrid'],
+  [/london|londres|\buk\b|england/,'Europe/London'],
+  [/\bsf\b|san francisco|los angeles|california|berkeley|oakland|san diego|seattle|portland|\bla\b/,'America/Los_Angeles'],
+];
+
+function parseCityToTimezone(text){
+  const t=(text||'').toLowerCase();
+  for(const [re,tz] of CITY_TZ_TABLE) if(re.test(t)) return {tz,matched:true};
+  if(/^[A-Za-z]+\/[A-Za-z_\/]+$/.test((text||'').trim())) return {tz:text.trim(),matched:true};
+  return {tz:'America/Los_Angeles',matched:false};
+}
+function parseLanguageChoice(text){
+  const t=(text||'').toLowerCase();
+  if(/(espa|spanish|castellano)/.test(t)) return 'es';
+  if(/(english|ingl[eé]s|\ben\b|\beng\b)/.test(t)) return 'en';
+  return 'es';
+}
+function sanitizeName(raw){
+  const first=(raw||'').trim().split(/\s+/)[0]||'';
+  const clean=first.replace(/[^\p{L}\p{N}]/gu,'').slice(0,30);
+  return clean||'Amigo';
+}
+function parseCategorySelection(text){
+  const nums=[...text.matchAll(/\d+/g)].map(m=>parseInt(m[0])-1);
+  if(nums.length>0){
+    const sel=nums.map(i=>PRESET_CATEGORIES[i]).filter(Boolean);
+    if(sel.length>0) return sel;
+  }
+  return PRESET_CATEGORIES.filter(c=>text.toLowerCase().includes(c.name.toLowerCase()));
+}
+function parseBriefTimes(text){
+  const t=(text||'').toLowerCase();
+  if(!/\d/.test(t)&&/\b(no|ninguno|ningun[ao]|none|nada|nope)\b/.test(t)) return {morning:'',evening:''};
+  const found=[]; const re=/(\d{1,2})(?::(\d{2}))?(?:\s*([ap])\.?m\.?)?/g; let m;
+  while((m=re.exec(t))&&found.length<2){
+    let h=parseInt(m[1],10); const min=m[2]?parseInt(m[2],10):0; const mer=m[3]||'';
+    if(h>23||min>59) continue;
+    if(mer==='p'&&h<12) h+=12;
+    if(mer==='a'&&h===12) h=0;
+    found.push({h,min,explicit:!!mer||h>12});
+  }
+  const mMorning=/(ma[ñn]ana|morning|matutin|am\b)/.test(t);
+  const mEvening=/(noche|night|evening|tarde|vespertin|diario|pm\b)/.test(t);
+  let wantM=true,wantE=true;
+  const onlyOne=/(solo|s[oó]lo|only|just|\buno\b|\bone\b|un brief|1 brief)/.test(t);
+  if(onlyOne){
+    if(mMorning&&!mEvening) wantE=false;
+    else if(mEvening&&!mMorning) wantM=false;
+    else if(found.length===1){ wantE=found[0].h>=12; wantM=!wantE; }
+  }
+  const fmt=x=>`${String(x.h).padStart(2,'0')}:${String(x.min).padStart(2,'0')}`;
+  let morning=wantM?'07:00':'', evening=wantE?'20:00':'';
+  if(found.length===1){
+    const x={...found[0]};
+    if(wantM&&!wantE) morning=fmt(x);
+    else if(wantE&&!wantM){ if(x.h<12&&!x.explicit) x.h+=12; evening=fmt(x); }
+    else if(x.h<12) morning=fmt(x); else evening=fmt(x);
+  } else if(found.length>=2){
+    let [a,b]=found.map(x=>({...x}));
+    if(a.h>b.h) [a,b]=[b,a];
+    if(wantM) morning=fmt(a);
+    if(wantE){ if(b.h<12&&!b.explicit) b.h+=12; evening=fmt(b); }
+  }
+  return {morning,evening};
+}
+
+/* Mensajes exactos del bot */
+const OB_WELCOME = `¡Hola! Soy *Sydney* 👋 Tu asistente personal. / Hi! I'm *Sydney* 👋 Your personal assistant.
+
+🎤 Puedes escribirme por texto o mandarme *notas de voz*, como prefieras. / You can text me or send me *voice notes*, whatever's easier.
+
+Primero lo primero — ¿en qué idioma quieres que hablemos? / First things first — which language should we use?
+👉 *español* / *english*`;
+
+const OB={
+ es:{
+  askName:()=>`Perfecto, español 🙌\n\n¿Cómo quieres que te llame?`,
+  askLocation:n=>`¡Mucho gusto, ${n}! 👋\n\n¿En qué ciudad y país estás?\n(Así te muestro fechas y recordatorios en tu hora local)`,
+  tzConfirm:tz=>`Mmm, no ubico bien esa ciudad 😅 Voy a asumir la zona horaria *${tz}*.\n\n¿Está bien? (responde *sí*, o dime otra ciudad)`,
+  tzKept:tz=>`Ok, dejo *${tz}* por ahora. Si no es la correcta, más adelante solo dime en qué ciudad estás y la ajusto.`,
+  askBriefs:tz=>`✅ Zona horaria: *${tz}*\n\nAhora — ¿quieres que te mande *briefs*? Son resúmenes con tus tareas y pendientes del día.\n\nNormalmente recomendamos dos: uno en la mañana (7:00 am) y uno en la noche (8:00 pm). Pero dime tú: ¿cuántos quieres y a qué hora?`,
+  briefsSet:(m,e)=>{
+    let s;
+    if(m&&e) s=`✅ Listo: brief de la mañana a las *${m}* y de la noche a las *${e}*.`;
+    else if(m) s=`✅ Listo: un brief diario en la mañana a las *${m}*.`;
+    else if(e) s=`✅ Listo: un brief diario en la noche a las *${e}*.`;
+    else s=`✅ Ok, sin briefs programados. Si cambias de opinión, solo pídemelo.`;
+    return s+`\n\nY ojo 👀 — no soy solo briefs: escríbeme lo que necesites *a cualquier hora del día* y te respondo al momento.`;
+  },
+  tutorialTasks:()=>`Te muestro rápido cómo funciono — parte 1 de 2 📋\n\n*TAREAS*\nPara agregar una tarea solo dime qué hay que hacer y para cuándo (hoy, mañana, el viernes, 15-jul…). Yo te confirmo la categoría antes de guardar.\n\nEj: _"agrega tarea: revisar el contrato, para el jueves"_\n\nY cuando la termines, dímelo en palabras simples: _"ya la hice"_, _"listo lo del contrato"_ ✅\n\n¿Alguna duda? Respóndeme lo que sea y seguimos.`,
+  tutorialDebts:()=>`Parte 2 de 2 💰\n\n*DEUDAS*\nTambién llevo el registro de quién te debe y a quién le debes.\n\nEj: _"Juan me debe 50 dólares por un asado"_\nEj: _"le debo a María 200 pesos"_\n\nY cuando se pague: _"ya le pagué a Juan"_ o _"María ya me pagó"_ ✅\n\n¿Todo claro? Respóndeme y vamos con lo último.`,
+  askCats:l=>`Último paso 📂\n\n¿Qué categorías quieres usar para organizar tus tareas?\n\n${l}\n\nEscribe los números separados por coma (ej: 1, 3, 5) o los nombres.`,
+  askCustomCats:n=>`✅ Categorías guardadas: *${n}*.\n\n¿Quieres agregar alguna categoría tuya? Dime los nombres separados por coma (ej: _Viajes, Iglesia_) — o responde *no*.`,
+  customAdded:n=>`✅ Agregué: *${n}*.`,
+  done:n=>`¡Todo listo, ${n}! 🎉 Cuando quieras, empieza — por texto o nota de voz 🎤`
+ },
+ en:{
+  askName:()=>`Great, English it is 🙌\n\nWhat should I call you?`,
+  askLocation:n=>`Nice to meet you, ${n}! 👋\n\nLet me know your city and country.\n(That way I show dates and reminders in your local time)`,
+  tzConfirm:tz=>`Hmm, I don't recognize that city 😅 I'll assume the *${tz}* timezone.\n\nIs that right? (reply *yes*, or tell me another city)`,
+  tzKept:tz=>`Ok, I'll keep *${tz}* for now. If it's not right, just tell me your city later and I'll fix it.`,
+  askBriefs:tz=>`✅ Timezone: *${tz}*\n\nNow — do you want me to send you *briefs*? They're summaries of your tasks and pending items for the day.\n\nWe usually recommend two: one in the morning (7:00 am) and one at night (8:00 pm). But you tell me: how many do you want, and at what times?`,
+  briefsSet:(m,e)=>{
+    let s;
+    if(m&&e) s=`✅ Done: morning brief at *${m}* and evening brief at *${e}*.`;
+    else if(m) s=`✅ Done: one daily brief in the morning at *${m}*.`;
+    else if(e) s=`✅ Done: one daily brief in the evening at *${e}*.`;
+    else s=`✅ Ok, no scheduled briefs. If you change your mind, just ask.`;
+    return s+`\n\nAnd heads up 👀 — I'm not just briefs: message me whatever you need *at any time of day* and I'll answer right away.`;
+  },
+  tutorialTasks:()=>`Quick tour of how I work — part 1 of 2 📋\n\n*TASKS*\nTo add a task just tell me what needs to get done and by when (today, tomorrow, Friday, 15-Jul…). I'll confirm the category before saving.\n\nE.g.: _"add task: review the contract, due Thursday"_\n\nAnd when you finish it, just say so in plain words: _"done"_, _"finished the contract thing"_ ✅\n\nAny questions? Reply anything and we'll keep going.`,
+  tutorialDebts:()=>`Part 2 of 2 💰\n\n*DEBTS*\nI also keep track of who owes you and who you owe.\n\nE.g.: _"Juan owes me 50 dollars for a barbecue"_\nE.g.: _"I owe María 200 pesos"_\n\nAnd when it's paid: _"I paid Juan back"_ or _"María paid me"_ ✅\n\nAll clear? Reply and we'll do the last step.`,
+  askCats:l=>`Last step 📂\n\nWhich categories do you want to use to organize your tasks?\n\n${l}\n\nType the numbers separated by commas (e.g. 1, 3, 5) or the names.`,
+  askCustomCats:n=>`✅ Categories saved: *${n}*.\n\nWant to add categories of your own? Tell me the names separated by commas (e.g. _Travel, Church_) — or reply *no*.`,
+  customAdded:n=>`✅ Added: *${n}*.`,
+  done:n=>`All set, ${n}! 🎉 Start whenever you want — text or voice note 🎤`
+ }
+};
+
+/* Render igual que el bot: escapa, luego *negrita* / _itálica_ */
+function render(t){
+  let s=String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  s=s.replace(/\*(?=\S)([^*\n]+?)(?<=\S)\*/g,'<b>$1</b>');
+  s=s.replace(/(^|[\s(])_(?=\S)([^_\n]+?)(?<=\S)_(?=[\s).,!?:;]|$)/g,'$1<i>$2</i>');
+  return s;
+}
+
+/* ── estado ───────────────────────────────────────────────── */
+const ORDER=['new','awaiting_language','awaiting_name','awaiting_location','awaiting_briefs','awaiting_tasks_ack','awaiting_debts_ack','awaiting_cats','awaiting_custom_cat','done'];
+let U, lastParsed;
+const $=id=>document.getElementById(id);
+
+function fresh(){
+  U={onboarding:'new',language:null,preferred_name:null,timezone:'America/Los_Angeles',
+     brief_morning:'07:00',brief_evening:'20:00',categories:[]};
+  lastParsed=null;
+}
+
+const CHIPS={
+  awaiting_language:['español','english'],
+  awaiting_name:['the second user','Santiago Labarca'],
+  awaiting_location:['Berkeley, USA','Santiago de Chile','Caracas, Venezuela','Tombuctú'],
+  awaiting_tz_confirm:['sí','Dallas, Texas'],
+  awaiting_briefs:['los dos, como recomiendas','solo en la mañana','solo el de la noche a las 9','no quiero briefs'],
+  awaiting_tasks_ack:['todo claro','¿y si me equivoco?'],
+  awaiting_debts_ack:['listo'],
+  awaiting_cats:['1, 4, 6','Finanzas, Personal'],
+  awaiting_custom_cat:['Viajes, Iglesia','no']
+};
+
+function bot(text){
+  const d=document.createElement('div');
+  d.className='msg bot'; d.innerHTML=render(text);
+  $('chat').appendChild(d); $('chat').scrollTop=$('chat').scrollHeight;
+}
+function me(text){
+  const d=document.createElement('div');
+  d.className='msg me'; d.textContent=text;
+  $('chat').appendChild(d); $('chat').scrollTop=$('chat').scrollHeight;
+}
+
+function T(){ return OB[U.language==='en'?'en':'es']; }
+
+/* La máquina de estados, misma forma que handleOnboarding() */
+function step(text){
+  const s=U.onboarding, t=T();
+
+  if(s==='new'){ U.onboarding='awaiting_language'; bot(OB_WELCOME); return; }
+
+  if(s==='awaiting_language'){
+    const c=parseLanguageChoice(text);
+    lastParsed=`parseLanguageChoice("${text}")\n  → "${c}"`;
+    U.language=c; U.onboarding='awaiting_name';
+    bot(OB[c].askName()); return;
+  }
+  if(s==='awaiting_name'){
+    const n=sanitizeName(text);
+    lastParsed=`sanitizeName("${text}")\n  → "${n}"   (primer token, solo letras/dígitos, máx 30)`;
+    U.preferred_name=n; U.onboarding='awaiting_location';
+    bot(t.askLocation(n)); return;
+  }
+  if(s==='awaiting_location'){
+    const r=parseCityToTimezone(text);
+    lastParsed=`parseCityToTimezone("${text}")\n  → { tz: "${r.tz}", matched: ${r.matched} }`;
+    U.timezone=r.tz;
+    if(r.matched){ U.onboarding='awaiting_briefs'; bot(t.askBriefs(r.tz)); }
+    else { U.onboarding='awaiting_tz_confirm'; bot(t.tzConfirm(r.tz)); }
+    return;
+  }
+  if(s==='awaiting_tz_confirm'){
+    const yes=/^(s[ií]|yes|ok|dale|correcto|claro|sure|yep|yeah)\b/i.test((text||'').trim());
+    let tz=U.timezone;
+    if(!yes){
+      const retry=parseCityToTimezone(text);
+      if(retry.matched) tz=retry.tz; else bot(t.tzKept(tz));
+    }
+    lastParsed=`confirmación: ${yes?'aceptada':'reintento'}\n  → zona final "${tz}"   (un solo reintento, nunca un bucle)`;
+    U.timezone=tz; U.onboarding='awaiting_briefs';
+    bot(t.askBriefs(tz)); return;
+  }
+  if(s==='awaiting_briefs'){
+    const r=parseBriefTimes(text);
+    lastParsed=`parseBriefTimes("${text}")\n  → { morning: "${r.morning||''}", evening: "${r.evening||''}" }${(!r.morning&&!r.evening)?'\n  (vacío = ese brief queda apagado)':''}`;
+    U.brief_morning=r.morning; U.brief_evening=r.evening;
+    U.onboarding='awaiting_tasks_ack';
+    bot(t.briefsSet(r.morning,r.evening)); bot(t.tutorialTasks()); return;
+  }
+  if(s==='awaiting_tasks_ack'){
+    lastParsed=`(cualquier respuesta avanza — la máquina no la interpreta)`;
+    U.onboarding='awaiting_debts_ack'; bot(t.tutorialDebts()); return;
+  }
+  if(s==='awaiting_debts_ack'){
+    lastParsed=`(cualquier respuesta avanza)`;
+    U.onboarding='awaiting_cats';
+    bot(t.askCats(PRESET_CATEGORIES.map((c,i)=>`${i+1}. ${c.name}`).join('\n'))); return;
+  }
+  if(s==='awaiting_cats'){
+    const sel=parseCategorySelection(text);
+    const cats=sel.length>0?sel:[PRESET_CATEGORIES[0],PRESET_CATEGORIES[PRESET_CATEGORIES.length-1]];
+    lastParsed=`parseCategorySelection("${text}")\n  → ${sel.length?sel.map(c=>c.name).join(', '):'sin coincidencias → Work + Otros'}`;
+    U.categories=cats.map(c=>({name:c.name}));
+    U.onboarding='awaiting_custom_cat';
+    bot(t.askCustomCats(cats.map(c=>c.name).join(', '))); return;
+  }
+  if(s==='awaiting_custom_cat'){
+    const a=(text||'').trim();
+    const added=[];
+    if(!/^(no+|nope|nel|n)\.?$/i.test(a)){
+      const existing=new Set([...U.categories,...PRESET_CATEGORIES].map(c=>c.name.toLowerCase()));
+      for(const raw of a.split(',')){
+        const n=raw.replace(/[^\p{L}\p{N} ]/gu,'').trim().slice(0,30);
+        if(!n||existing.has(n.toLowerCase())) continue;
+        if(/^(s[ií]|yes|ok|dale|claro|sure)$/i.test(n)) continue;
+        U.categories.push({name:n}); existing.add(n.toLowerCase()); added.push(n);
+      }
+      if(added.length) bot(t.customAdded(added.join(', ')));
+    }
+    lastParsed=added.length?`categorías nuevas → ${added.join(', ')}`:`sin categorías nuevas   (se filtran duplicados y muletillas como "sí")`;
+    U.onboarding='done';
+    bot(t.done(U.preferred_name||'tú'));
+    return;
+  }
+}
+
+function paint(){
+  const pill=$('statePill');
+  pill.textContent=U.onboarding;
+  pill.classList.toggle('done',U.onboarding==='done');
+
+  const rows=[
+    ['language',U.language],
+    ['preferred_name',U.preferred_name],
+    ['timezone',U.timezone],
+    ['brief_morning',U.brief_morning||'(off)'],
+    ['brief_evening',U.brief_evening||'(off)'],
+    ['categories',U.categories.length?U.categories.map(c=>c.name).join(', '):null],
+    ['onboarding',U.onboarding]
+  ];
+  const kv=$('kv');
+  const prev={}; kv.querySelectorAll('dd').forEach(d=>prev[d.dataset.k]=d.textContent);
+  kv.innerHTML='';
+  for(const [k,v] of rows){
+    const dt=document.createElement('dt'); dt.textContent=k;
+    const dd=document.createElement('dd'); dd.dataset.k=k;
+    if(v==null){ dd.textContent='null'; dd.className='empty'; } else dd.textContent=v;
+    if(prev[k]!==undefined&&prev[k]!==dd.textContent) dd.classList.add('flash');
+    kv.append(dt,dd);
+  }
+
+  const idx=Math.max(0,ORDER.indexOf(U.onboarding==='awaiting_tz_confirm'?'awaiting_location':U.onboarding));
+  $('steps').innerHTML=ORDER.slice(1).map((_,i)=>`<i class="${i<idx?'on':''}"></i>`).join('');
+  $('parsedTxt').textContent=lastParsed||'Aún no has respondido nada.';
+
+  const chips=CHIPS[U.onboarding]||[];
+  $('chips').innerHTML=chips.map(c=>`<button type="button" class="chip">${c}</button>`).join('');
+  $('chips').querySelectorAll('.chip').forEach(b=>b.onclick=()=>send(b.textContent));
+
+  const done=U.onboarding==='done';
+  $('input').disabled=done;
+  $('input').placeholder=done?'Onboarding completo — reinicia para volver a probar':'Escribe tu respuesta…';
+  $('langLbl').textContent=U.language||'auto';
+}
+
+function send(text){
+  if(!text||U.onboarding==='done') return;
+  me(text); step(text); paint();
+  $('input').value='';
+}
+
+function reset(){
+  fresh(); $('chat').innerHTML=''; step(''); paint();
+}
+
+$('form').addEventListener('submit',e=>{e.preventDefault();send($('input').value.trim());});
+$('resetBtn').onclick=reset;
+$('langBtn').onclick=()=>{
+  U.language=U.language==='es'?'en':(U.language==='en'?null:'es');
+  paint();
+};
+
+/* tabs */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x===t)));
+  $('view-tg').classList.toggle('hidden',t.dataset.view!=='tg');
+  $('view-web').classList.toggle('hidden',t.dataset.view!=='web');
+});
+
+/* ── propuesta web ────────────────────────────────────────── */
+let W,wStep=0;
+function wFresh(){
+  W={language:'es',name:'',city:'',tz:null,morning:'07:00',evening:'20:00',
+     useM:true,useE:true,cats:new Set(['Work','Personal','Finanzas']),custom:[]};
+  wStep=0;
+}
+const WSTEPS=[
+ {t:'¿En qué idioma hablamos?',s:'Puedes cambiarlo después en cualquier momento.',r(){
+   return `<div class="pick">
+     <button class="opt" data-l="es" aria-pressed="${W.language==='es'}"><b>Español</b><span>Sydney te responderá en español</span></button>
+     <button class="opt" data-l="en" aria-pressed="${W.language==='en'}"><b>English</b><span>Sydney will reply in English</span></button>
+   </div>
+   <div class="callout"><span>🎤</span><div>Igual que en Telegram, puedes <b>escribir o mandar notas de voz</b>. Esto se dice aquí arriba a propósito: en el chat pasa desapercibido.</div></div>`;
+ },bind(el){el.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{W.language=b.dataset.l;wRender();});}},
+
+ {t:'¿Cómo te llamamos?',s:'Solo el nombre con el que quieres que te hable.',r(){
+   return `<div class="field"><label for="wname">Tu nombre</label>
+     <input id="wname" type="text" value="${W.name}" placeholder="the second user" autocomplete="given-name"></div>
+   <div class="hint">${W.name?`Sydney te dirá <b>${sanitizeName(W.name)}</b>`:'Se usa solo el primer nombre.'}</div>`;
+ },bind(el){const i=el.querySelector('#wname');i.oninput=()=>{W.name=i.value;el.querySelector('.hint').innerHTML=W.name?`Sydney te dirá <b>${sanitizeName(W.name)}</b>`:'Se usa solo el primer nombre.';};i.focus();}},
+
+ {t:'¿Dónde estás?',s:'Lo necesito para mostrarte fechas y recordatorios en tu hora local.',r(){
+   const r=W.city?parseCityToTimezone(W.city):null;
+   return `<div class="field"><label for="wcity">Ciudad y país</label>
+     <input id="wcity" type="text" value="${W.city}" placeholder="Berkeley, Estados Unidos"></div>
+   <div class="hint" id="tzhint">${r?(r.matched?`Zona horaria detectada: <b>${r.tz}</b>`:`No reconozco esa ciudad. Usaré <b>${r.tz}</b> — puedes corregirlo luego.`):'Empieza a escribir y te muestro la zona horaria.'}</div>`;
+ },bind(el){const i=el.querySelector('#wcity');i.oninput=()=>{
+    W.city=i.value; const r=parseCityToTimezone(i.value); W.tz=r.tz;
+    el.querySelector('#tzhint').innerHTML=i.value?(r.matched?`Zona horaria detectada: <b>${r.tz}</b>`:`No reconozco esa ciudad. Usaré <b>${r.tz}</b> — puedes corregirlo luego.`):'Empieza a escribir y te muestro la zona horaria.';
+   };i.focus();}},
+
+ {t:'¿Cuándo te mando el resumen?',s:'Son los briefs: tus tareas y pendientes del día. Recomendamos dos.',r(){
+   return `<div class="toggle-row ${W.useM?'on':''}">
+     <div class="tl"><b>Brief de la mañana</b><span>Agenda, tareas y pendientes del día</span></div>
+     <div class="tr"><input type="time" id="wm" value="${W.morning}" ${W.useM?'':'disabled'} style="width:118px;padding:7px 9px">
+     <button class="sw" id="swm" aria-pressed="${W.useM}" aria-label="Activar brief de la mañana"></button></div></div>
+   <div class="toggle-row ${W.useE?'on':''}">
+     <div class="tl"><b>Brief de la noche</b><span>Lo que queda y la agenda de mañana</span></div>
+     <div class="tr"><input type="time" id="we" value="${W.evening}" ${W.useE?'':'disabled'} style="width:118px;padding:7px 9px">
+     <button class="sw" id="swe" aria-pressed="${W.useE}" aria-label="Activar brief de la noche"></button></div></div>
+   <div class="callout"><span>💬</span><div>No soy solo briefs: <b>escríbeme a cualquier hora</b> y te respondo al momento.</div></div>`;
+ },bind(el){
+   el.querySelector('#swm').onclick=()=>{W.useM=!W.useM;wRender();};
+   el.querySelector('#swe').onclick=()=>{W.useE=!W.useE;wRender();};
+   el.querySelector('#wm').onchange=e=>W.morning=e.target.value;
+   el.querySelector('#we').onchange=e=>W.evening=e.target.value;
+ }},
+
+ {t:'¿Cómo organizas tus tareas?',s:'Elige las que uses. Puedes añadir las tuyas.',r(){
+   const tags=PRESET_CATEGORIES.map(c=>`<button class="tag" data-c="${c.name}" aria-pressed="${W.cats.has(c.name)}">${c.name}</button>`).join('');
+   const cust=W.custom.map(c=>`<button class="tag" aria-pressed="true" data-c="${c}">${c}</button>`).join('');
+   return `<div class="tagwrap">${tags}${cust}
+     <button class="tag custom" id="addcat">+ Añadir la mía</button></div>`;
+ },bind(el){
+   el.querySelectorAll('.tag[data-c]').forEach(b=>b.onclick=()=>{
+     const n=b.dataset.c;
+     if(W.cats.has(n)) W.cats.delete(n); else W.cats.add(n);
+     wRender();
+   });
+   el.querySelector('#addcat').onclick=()=>{
+     const n=prompt('Nombre de la categoría');
+     if(n){const c=n.replace(/[^\p{L}\p{N} ]/gu,'').trim().slice(0,30);
+       if(c&&!W.custom.includes(c)&&!PRESET_CATEGORIES.some(p=>p.name.toLowerCase()===c.toLowerCase())){W.custom.push(c);W.cats.add(c);}}
+     wRender();
+   };
+ }}
+];
+
+function wRender(){
+  const el=$('webBody');
+  if(wStep>=WSTEPS.length){
+    const cats=[...W.cats].join(', ')||'—';
+    el.innerHTML=`<h2>Todo listo, ${W.name?sanitizeName(W.name):'tú'} 🎉</h2>
+      <p class="sub">Esto es exactamente lo que quedaría guardado en tu cuenta.</p>
+      <div class="summary">
+        <div class="srow"><span>Idioma</span><b>${W.language}</b></div>
+        <div class="srow"><span>Nombre</span><b>${W.name?sanitizeName(W.name):'—'}</b></div>
+        <div class="srow"><span>Zona horaria</span><b>${W.tz||parseCityToTimezone(W.city).tz}</b></div>
+        <div class="srow"><span>Brief mañana</span><b>${W.useM?W.morning:'apagado'}</b></div>
+        <div class="srow"><span>Brief noche</span><b>${W.useE?W.evening:'apagado'}</b></div>
+        <div class="srow"><span>Categorías</span><b>${cats}</b></div>
+      </div>
+      <div class="callout"><span>🔍</span><div>Los mismos seis campos que escribe el flujo de Telegram. <b>Esa es la prueba de que no divergen.</b></div></div>`;
+    $('webNext').textContent='Volver a empezar';
+    $('progTxt').textContent='Listo';
+    $('progBar').style.width='100%';
+    return;
+  }
+  const s=WSTEPS[wStep];
+  el.innerHTML=`<h2>${s.t}</h2><p class="sub">${s.s}</p>${s.r()}`;
+  s.bind(el);
+  $('webNext').textContent=wStep===WSTEPS.length-1?'Terminar':'Continuar';
+  $('progTxt').textContent=`${wStep+1} / ${WSTEPS.length}`;
+  $('progBar').style.width=`${((wStep+1)/WSTEPS.length)*100}%`;
+  $('webBack').disabled=wStep===0;
+}
+$('webNext').onclick=()=>{
+  if(wStep>=WSTEPS.length){ wFresh(); wRender(); return; }
+  wStep++; wRender();
+};
+$('webBack').onclick=()=>{ if(wStep>0){wStep--;wRender();} };
+
+/* arranque */
+fresh(); reset(); wFresh(); wRender();
+</script>
