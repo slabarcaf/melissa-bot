@@ -1,0 +1,548 @@
+<title>Sydney Design Direction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+
+<style>
+/* ════ TOKENS ════════════════════════════════════════════════════════
+   Amanecer y anochecer. Índigo de base, ámbar para lo que pide atención.
+   Estos son los valores que irían a globals.css tal cual.               */
+:root{
+  --bg:#F7F8FC; --surface:#FFFFFF; --raised:#F1F3FA; --sunken:#EAEDF7;
+  --ink:#151A3A; --ink-2:#5B6188; --ink-3:#8A90B0;
+  --line:#E2E5F0; --line-2:#D3D8E8;
+  --brand:#3D4BC7; --brand-ink:#FFFFFF; --brand-soft:#E8EBFB;
+  --amber:#E8912B; --amber-soft:#FCF0DE;
+  --ok:#2E9E6B; --ok-soft:#E1F4EC;
+  --late:#D95241; --late-soft:#FCE9E6;
+  --night-1:#151A3A; --night-2:#232B63;
+  --shadow:0 1px 2px rgba(21,26,58,.05), 0 8px 24px rgba(21,26,58,.07);
+  --shadow-lg:0 2px 4px rgba(21,26,58,.06), 0 20px 48px rgba(21,26,58,.14);
+  --r-sm:8px; --r:12px; --r-lg:18px; --r-xl:26px;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1226; --surface:#1A1E3D; --raised:#242A54; --sunken:#141830;
+    --ink:#E8EAF6; --ink-2:#A0A6C8; --ink-3:#767D9F;
+    --line:#2E3563; --line-2:#3A4276;
+    --brand:#7B87F0; --brand-ink:#0F1226; --brand-soft:#232A5C;
+    --amber:#F5A93F; --amber-soft:#3A2C15;
+    --ok:#4ADE9B; --ok-soft:#15352A;
+    --late:#FF6B5B; --late-soft:#3A1C1A;
+    --night-1:#0B0E20; --night-2:#1A2050;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 24px 56px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1226; --surface:#1A1E3D; --raised:#242A54; --sunken:#141830;
+  --ink:#E8EAF6; --ink-2:#A0A6C8; --ink-3:#767D9F;
+  --line:#2E3563; --line-2:#3A4276;
+  --brand:#7B87F0; --brand-ink:#0F1226; --brand-soft:#232A5C;
+  --amber:#F5A93F; --amber-soft:#3A2C15;
+  --ok:#4ADE9B; --ok-soft:#15352A;
+  --late:#FF6B5B; --late-soft:#3A1C1A;
+  --night-1:#0B0E20; --night-2:#1A2050;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  --shadow-lg:0 2px 6px rgba(0,0,0,.5), 0 24px 56px rgba(0,0,0,.45);
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Figtree",ui-sans-serif,system-ui,-apple-system,sans-serif;
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3,.display{font-family:"Sora","Figtree",system-ui,sans-serif;margin:0;text-wrap:balance;letter-spacing:-.02em}
+.num{font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
+
+/* ════ CHROME DE LA MAQUETA (no es parte del diseño) ════ */
+.lab-bar{position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+  padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.lab-bar .tag{font-family:"Sora";font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--brand)}
+.lab-bar .spacer{flex:1}
+.seg{display:flex;gap:2px;background:var(--sunken);padding:3px;border-radius:10px;border:1px solid var(--line)}
+.seg button{padding:5px 13px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.lab-note{max-width:1180px;margin:0 auto;padding:14px 20px 0;color:var(--ink-2);font-size:13.5px}
+.lab-note b{color:var(--ink)}
+
+.screen{display:none}
+.screen.on{display:block}
+
+/* ════ ACCESO ════════════════════════════════════════════ */
+.signin{display:grid;grid-template-columns:1.05fr .95fr;min-height:640px;
+  max-width:1180px;margin:22px auto;border-radius:var(--r-xl);overflow:hidden;
+  box-shadow:var(--shadow-lg);border:1px solid var(--line)}
+@media (max-width:860px){.signin{grid-template-columns:1fr}.signin .pitch{min-height:340px}}
+
+.pitch{position:relative;padding:44px;color:#EDEFFB;overflow:hidden;
+  background:linear-gradient(155deg,var(--night-2) 0%,var(--night-1) 62%)}
+/* el amanecer: un resplandor cálido bajo el horizonte del panel */
+.pitch::after{content:"";position:absolute;left:-14%;right:-14%;bottom:-46%;height:74%;
+  background:radial-gradient(ellipse at 50% 0%,rgba(232,145,43,.42),rgba(232,145,43,.10) 46%,transparent 70%);
+  pointer-events:none}
+.pitch>*{position:relative;z-index:1}
+.logo{display:flex;align-items:center;gap:11px;margin-bottom:auto}
+.logo .mark{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(150deg,var(--amber),#C9701A);color:#20130A;font-family:"Sora";font-weight:700;font-size:16px}
+.logo b{font-family:"Sora";font-size:17px;letter-spacing:-.01em}
+.pitch h1{font-size:clamp(30px,3.6vw,44px);font-weight:700;line-height:1.12;margin:52px 0 16px;max-width:15ch}
+.pitch h1 em{font-style:normal;color:var(--amber)}
+.pitch p{color:#B9BEE0;max-width:38ch;margin:0 0 34px;font-size:15.5px}
+
+/* el arco del día: 7:00 ─ ahora ─ 20:00. La estructura real del producto. */
+.arc{border-top:1px solid rgba(237,239,251,.14);padding-top:20px;max-width:400px}
+.arc .lbl{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#8E95C4;margin-bottom:13px;font-family:"Sora";font-weight:600}
+.arc .track{position:relative;height:3px;border-radius:2px;
+  background:linear-gradient(90deg,var(--amber) 0%,#8FA0E8 48%,#4E5AA8 100%)}
+.arc .pin{position:absolute;top:50%;width:11px;height:11px;border-radius:50%;background:#fff;
+  transform:translate(-50%,-50%);box-shadow:0 0 0 4px rgba(255,255,255,.16)}
+.arc .ends{display:flex;justify-content:space-between;margin-top:11px;font-size:12.5px;color:#A2A9D4}
+.arc .ends span{display:flex;align-items:center;gap:5px}
+
+.gate{background:var(--surface);padding:44px;display:flex;flex-direction:column;justify-content:center;gap:8px}
+.gate h2{font-size:25px;font-weight:600;margin-bottom:6px}
+.gate .sub{color:var(--ink-2);margin:0 0 26px;font-size:14.5px}
+.gbtn{display:inline-flex;align-items:center;gap:11px;width:280px;max-width:100%;
+  padding:11px 18px;border-radius:999px;border:1px solid var(--line-2);background:var(--surface);
+  font-weight:500;font-size:14.5px;box-shadow:var(--shadow)}
+.gbtn svg{flex:0 0 auto}
+.gate .fine{margin-top:22px;font-size:12.5px;color:var(--ink-3);max-width:36ch;line-height:1.5}
+.gate .iframe-note{margin-top:26px;padding:11px 13px;border-radius:var(--r);background:var(--amber-soft);
+  border:1px solid color-mix(in srgb,var(--amber) 34%,transparent);font-size:12.5px;color:var(--ink-2)}
+.gate .iframe-note b{color:var(--ink)}
+
+/* ════ APP ═══════════════════════════════════════════════ */
+.app{max-width:1180px;margin:22px auto;border-radius:var(--r-xl);overflow:hidden;
+  border:1px solid var(--line);box-shadow:var(--shadow-lg);background:var(--surface);
+  display:grid;grid-template-columns:212px 1fr;min-height:660px}
+@media (max-width:860px){.app{grid-template-columns:1fr}.rail{display:none}}
+
+.rail{background:var(--sunken);border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:5px}
+.rail .logo{margin:0 0 22px;padding:0 8px}
+.rail .logo .mark{background:linear-gradient(150deg,var(--brand),#2A35A0);color:#fff}
+.rail .logo b{color:var(--ink)}
+.rail a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:10px;
+  color:var(--ink-2);font-weight:500;font-size:14.5px;text-decoration:none;cursor:pointer}
+.rail a:hover{background:var(--raised);color:var(--ink)}
+.rail a.on{background:var(--brand-soft);color:var(--brand);font-weight:600}
+.rail a .ic{width:17px;text-align:center;opacity:.9}
+.rail a .count{margin-left:auto;font-size:12px;font-weight:700;color:var(--ink-3)}
+.rail .foot{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 8px 0;border-top:1px solid var(--line)}
+.rail .av{width:29px;height:29px;border-radius:50%;background:var(--brand);color:var(--brand-ink);
+  display:grid;place-items:center;font-weight:700;font-size:12.5px}
+.rail .who{font-size:13px;line-height:1.25;overflow:hidden}
+.rail .who b{display:block;font-weight:600}
+.rail .who span{color:var(--ink-3);font-size:11.5px}
+
+.main{padding:26px 30px 34px;overflow:auto}
+@media (max-width:520px){.main{padding:20px 16px 28px}}
+
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.top h2{font-size:26px;font-weight:700}
+.top .date{color:var(--ink-2);font-size:14px;margin-top:2px}
+.kbd{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:9px;
+  border:1px solid var(--line-2);background:var(--raised);color:var(--ink-2);font-size:12.5px}
+.kbd kbd{font-family:"Figtree";font-weight:700;font-size:11.5px;background:var(--surface);
+  border:1px solid var(--line-2);border-radius:5px;padding:1px 5px}
+
+/* captura rápida — siempre visible, entiende lenguaje natural */
+.capture{display:flex;align-items:center;gap:11px;padding:12px 15px;border-radius:var(--r-lg);
+  border:1.5px solid var(--line);background:var(--raised);margin-bottom:24px;transition:border-color .15s}
+.capture:focus-within{border-color:var(--brand);background:var(--surface)}
+.capture .plus{width:25px;height:25px;border-radius:8px;background:var(--brand);color:var(--brand-ink);
+  display:grid;place-items:center;font-weight:700;font-size:15px;flex:0 0 auto}
+.capture input{flex:1;border:none;background:none;color:var(--ink);font-size:15px;outline:none;min-width:0}
+.capture input::placeholder{color:var(--ink-3)}
+.capture .parsed{display:flex;gap:6px;flex-wrap:wrap}
+.pill-mini{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.pill-mini.date{background:var(--brand-soft);color:var(--brand)}
+.pill-mini.cat{background:var(--sunken);color:var(--ink-2);border:1px solid var(--line)}
+
+.sect{margin-bottom:26px}
+.sect-h{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.sect-h h3{font-size:12.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+.sect-h .n{font-size:11.5px;font-weight:700;color:var(--ink-3);background:var(--sunken);
+  padding:1px 8px;border-radius:999px;border:1px solid var(--line)}
+.sect-h .rule{flex:1;height:1px;background:var(--line)}
+.sect-h.late h3,.sect-h.late .n{color:var(--late)}
+.sect-h.late .n{background:var(--late-soft);border-color:color-mix(in srgb,var(--late) 26%,transparent)}
+
+.cards{display:flex;flex-direction:column;gap:8px}
+
+/* La tarjeta. Una sola, con density para lista y tablero. */
+.card{display:flex;align-items:flex-start;gap:13px;padding:13px 15px;border-radius:var(--r-lg);
+  background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);
+  position:relative;transition:border-color .13s,transform .13s}
+.card:hover{border-color:var(--line-2);transform:translateY(-1px)}
+.card.prio{border-left:3px solid var(--amber);padding-left:14px}
+.card.late-c{border-left:3px solid var(--late);padding-left:14px}
+.tick{flex:0 0 auto;width:20px;height:20px;border-radius:50%;border:1.7px solid var(--line-2);
+  background:var(--surface);margin-top:2px;transition:border-color .12s,background .12s}
+.card:hover .tick{border-color:var(--ok)}
+.tick.done{background:var(--ok);border-color:var(--ok)}
+.card .body{flex:1;min-width:0}
+.card .t{font-weight:500;font-size:14.8px;line-height:1.4;word-wrap:break-word}
+.card.done .t{color:var(--ink-3);text-decoration:line-through}
+.card .meta{display:flex;align-items:center;gap:8px;margin-top:5px;flex-wrap:wrap}
+.chip{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid transparent}
+.chip.cat{background:var(--sunken);color:var(--ink-2);border-color:var(--line)}
+.chip.due{background:transparent;color:var(--ink-3);padding-left:0}
+.chip.due.late{color:var(--late);font-weight:700}
+.chip.flame{background:var(--amber-soft);color:#9A5A0E}
+:root[data-theme="dark"] .chip.flame{color:var(--amber)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .chip.flame{color:var(--amber)}}
+.acts{display:flex;gap:3px;opacity:0;transition:opacity .13s;flex:0 0 auto}
+.card:hover .acts,.card:focus-within .acts{opacity:1}
+.acts button{width:29px;height:29px;border-radius:8px;color:var(--ink-3);font-size:13.5px;display:grid;place-items:center}
+.acts button:hover{background:var(--raised);color:var(--ink)}
+
+.empty{text-align:center;padding:46px 20px;color:var(--ink-2)}
+.empty .big{font-size:34px;margin-bottom:8px}
+.empty b{display:block;color:var(--ink);font-family:"Sora";font-size:16px;margin-bottom:4px}
+
+/* ════ TABLERO ═══════════════════════════════════════════ */
+.board{display:flex;gap:13px;overflow-x:auto;padding-bottom:12px}
+.col{flex:0 0 258px;background:var(--sunken);border:1px solid var(--line);border-radius:var(--r-lg);padding:12px;
+  display:flex;flex-direction:column;gap:8px}
+.col.today{background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 30%,transparent)}
+.col-h{display:flex;align-items:center;gap:8px;padding:0 3px 3px}
+.col-h b{font-family:"Sora";font-size:12.5px;font-weight:600;letter-spacing:.03em}
+.col-h .n{margin-left:auto;font-size:11.5px;font-weight:700;color:var(--ink-3)}
+.col .card{padding:11px 12px;border-radius:var(--r)}
+.col .card .t{font-size:13.8px}
+.col .tick{width:17px;height:17px}
+
+/* ════ ⌘K ════════════════════════════════════════════════ */
+.scrim{position:fixed;inset:0;z-index:80;background:rgba(21,26,58,.5);backdrop-filter:blur(3px);
+  display:grid;place-items:start center;padding-top:14vh}
+.scrim[hidden]{display:none}
+.palette{width:min(560px,92vw);background:var(--surface);border:1px solid var(--line-2);
+  border-radius:var(--r-lg);box-shadow:var(--shadow-lg);overflow:hidden}
+.palette .q{display:flex;align-items:center;gap:11px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.palette .q input{flex:1;border:none;background:none;outline:none;font-size:16px;color:var(--ink)}
+.palette .q input::placeholder{color:var(--ink-3)}
+.palette ul{list-style:none;margin:0;padding:7px}
+.palette li{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:10px;font-size:14.5px}
+.palette li.sel{background:var(--brand-soft);color:var(--brand);font-weight:600}
+.palette li .ic{width:17px;text-align:center}
+.palette li .k{margin-left:auto;font-size:11.5px;color:var(--ink-3);font-weight:600}
+.palette .grp{padding:9px 13px 4px;font-size:10.5px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+/* ════ toast con deshacer ════ */
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:90;
+  display:flex;align-items:center;gap:14px;padding:11px 15px;border-radius:var(--r);
+  background:var(--night-1);color:#EDEFFB;box-shadow:var(--shadow-lg);font-size:14px}
+.toast[hidden]{display:none}
+.toast button{color:var(--amber);font-weight:700;font-size:13.5px}
+
+.legend{max-width:1180px;margin:0 auto 40px;padding:0 20px}
+.legend h3{font-size:15px;margin-bottom:10px}
+.legend ul{margin:0;padding:0;list-style:none;display:grid;gap:7px}
+.legend li{display:flex;gap:10px;font-size:13.8px;color:var(--ink-2);line-height:1.5}
+.legend li::before{content:"→";color:var(--brand);flex:0 0 auto}
+.legend li b{color:var(--ink)}
+.swatches{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.sw{display:flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surface);font-size:12px;color:var(--ink-2)}
+.sw i{width:13px;height:13px;border-radius:4px;display:block}
+</style>
+
+<div class="lab-bar">
+  <span class="tag">Maqueta · sin backend</span>
+  <div class="seg" role="tablist">
+    <button data-s="signin" aria-pressed="false">Acceso</button>
+    <button data-s="today" aria-pressed="true">Hoy</button>
+    <button data-s="board" aria-pressed="false">Tablero</button>
+  </div>
+  <span class="spacer"></span>
+  <button class="kbd" id="openK">Paleta <kbd>⌘</kbd><kbd>K</kbd></button>
+  <div class="seg">
+    <button id="tLight">Claro</button>
+    <button id="tDark">Oscuro</button>
+    <button id="tSys" aria-pressed="true">Sistema</button>
+  </div>
+</div>
+
+<p class="lab-note">Tareas reales de tu cuenta. Nada está conectado — es para acordar la dirección antes de tocar producción. Prueba <b>⌘K</b>, marca una tarea, y cambia entre claro y oscuro.</p>
+
+<!-- ═══ ACCESO ═══ -->
+<section class="screen" id="s-signin">
+  <div class="signin">
+    <div class="pitch">
+      <div class="logo"><span class="mark">S</span><b>Sydney</b></div>
+      <h1>Tu día, <em>ordenado</em> antes de que empiece.</h1>
+      <p>Tareas, deudas y agenda en un solo lugar. Te escribo dos veces al día con lo que importa — y me puedes preguntar a cualquier hora.</p>
+      <div class="arc">
+        <div class="lbl">Tu día con Sydney</div>
+        <div class="track"><span class="pin" style="left:47%"></span></div>
+        <div class="ends">
+          <span>☀ 7:00 · brief de la mañana</span>
+          <span>☾ 20:00 · cierre del día</span>
+        </div>
+      </div>
+    </div>
+    <div class="gate">
+      <h2>Entra a tu cuenta</h2>
+      <p class="sub">Tus tareas son privadas. Nadie más las ve.</p>
+      <span class="gbtn">
+        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.6 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9.1h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.1 5.5c4.2-3.9 6.6-9.6 6.6-16.4z"/><path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.7s.3-3.3.8-4.7l-7.8-6.1C1 16.3 0 20 0 24s1 7.7 2.6 10.8l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.3-5.5l-7.1-5.5c-2 1.4-4.6 2.2-8.2 2.2-6.4 0-11.7-3.7-13.6-9.3l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+        Continuar con Google
+      </span>
+      <p class="fine">Al continuar aceptas que Sydney guarde tus tareas para mostrártelas. La sesión dura 15 días.</p>
+      <div class="iframe-note"><b>Nota técnica:</b> el botón real lo inyecta Google en un iframe y no se puede estilizar. Este es su aspecto y ancho reales (280 px); el diseño lo rodea, no lo pinta.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ APP ═══ -->
+<section class="screen on" id="s-today">
+  <div class="app">
+    <nav class="rail">
+      <div class="logo"><span class="mark">S</span><b>Sydney</b></div>
+      <a class="on"><span class="ic">◉</span>Hoy<span class="count">5</span></a>
+      <a data-goto="board"><span class="ic">▤</span>Tablero</a>
+      <a><span class="ic">✓</span>Completadas</a>
+      <a><span class="ic">💰</span>Deudas<span class="count">3</span></a>
+      <div class="foot">
+        <span class="av">S</span>
+        <span class="who"><b>Santiago</b><span>Berkeley · 7:00 / 20:00</span></span>
+      </div>
+    </nav>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h2>Buenos días, Santiago</h2>
+          <div class="date num">Martes 2 de septiembre · 5 pendientes</div>
+        </div>
+        <button class="kbd" data-openk>Buscar o crear <kbd>⌘</kbd><kbd>K</kbd></button>
+      </div>
+
+      <div class="capture">
+        <span class="plus">+</span>
+        <input id="cap" placeholder="Escribe una tarea… prueba “pagar la luz el viernes”" autocomplete="off">
+        <span class="parsed" id="capParsed"></span>
+      </div>
+
+      <div class="sect">
+        <div class="sect-h late"><h3>Vencidas</h3><span class="n num">2</span><span class="rule"></span></div>
+        <div class="cards">
+          <article class="card late-c">
+            <span class="tick" role="checkbox" aria-checked="false" tabindex="0"></span>
+            <div class="body"><div class="t">Firmar rental agreement</div>
+              <div class="meta"><span class="chip flame">🔥 Prioridad</span><span class="chip cat">Personal</span><span class="chip due late num">28-Ago · hace 5 días</span></div></div>
+            <div class="acts"><button title="Editar">✎</button><button title="Mañana">→</button><button title="Eliminar">🗑</button></div>
+          </article>
+          <article class="card late-c">
+            <span class="tick" role="checkbox" aria-checked="false" tabindex="0"></span>
+            <div class="body"><div class="t">Entregar llaves a Fernando</div>
+              <div class="meta"><span class="chip cat">Personal</span><span class="chip due late num">30-Ago · hace 3 días</span></div></div>
+            <div class="acts"><button title="Editar">✎</button><button title="Mañana">→</button><button title="Eliminar">🗑</button></div>
+          </article>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-h"><h3>Hoy</h3><span class="n num">3</span><span class="rule"></span></div>
+        <div class="cards">
+          <article class="card prio">
+            <span class="tick" role="checkbox" aria-checked="false" tabindex="0"></span>
+            <div class="body"><div class="t">Sacar ikon pass de correo</div>
+              <div class="meta"><span class="chip flame">🔥 Prioridad</span><span class="chip cat">Finanzas</span><span class="chip due num">Hoy</span></div></div>
+            <div class="acts"><button title="Editar">✎</button><button title="Mañana">→</button><button title="Eliminar">🗑</button></div>
+          </article>
+          <article class="card">
+            <span class="tick" role="checkbox" aria-checked="false" tabindex="0"></span>
+            <div class="body"><div class="t">Revisar CV Bela</div>
+              <div class="meta"><span class="chip cat">Otros</span><span class="chip due num">Hoy</span></div></div>
+            <div class="acts"><button title="Editar">✎</button><button title="Mañana">→</button><button title="Eliminar">🗑</button></div>
+          </article>
+          <article class="card">
+            <span class="tick" role="checkbox" aria-checked="false" tabindex="0"></span>
+            <div class="body"><div class="t">Contratar clases de golf</div>
+              <div class="meta"><span class="chip cat">Golf club</span><span class="chip due num">Hoy</span></div></div>
+            <div class="acts"><button title="Editar">✎</button><button title="Mañana">→</button><button title="Eliminar">🗑</button></div>
+          </article>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sect-h"><h3>Ya está</h3><span class="n num">1</span><span class="rule"></span></div>
+        <div class="cards">
+          <article class="card done">
+            <span class="tick done" role="checkbox" aria-checked="true" tabindex="0"></span>
+            <div class="body"><div class="t">Comprar maleta para viaje</div>
+              <div class="meta"><span class="chip cat">Personal</span></div></div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ TABLERO ═══ -->
+<section class="screen" id="s-board">
+  <div class="app">
+    <nav class="rail">
+      <div class="logo"><span class="mark">S</span><b>Sydney</b></div>
+      <a data-goto="today"><span class="ic">◉</span>Hoy<span class="count">5</span></a>
+      <a class="on"><span class="ic">▤</span>Tablero</a>
+      <a><span class="ic">✓</span>Completadas</a>
+      <a><span class="ic">💰</span>Deudas<span class="count">3</span></a>
+      <div class="foot">
+        <span class="av">S</span>
+        <span class="who"><b>Santiago</b><span>Berkeley · 7:00 / 20:00</span></span>
+      </div>
+    </nav>
+    <div class="main">
+      <div class="top">
+        <div><h2>Tablero</h2><div class="date">Todo lo abierto, por cuándo vence</div></div>
+        <button class="kbd" data-openk>Buscar o crear <kbd>⌘</kbd><kbd>K</kbd></button>
+      </div>
+      <div class="board">
+        <div class="col">
+          <div class="col-h"><b style="color:var(--late)">Vencidas</b><span class="n num">2</span></div>
+          <article class="card late-c"><span class="tick"></span><div class="body"><div class="t">Firmar rental agreement</div><div class="meta"><span class="chip due late num">28-Ago</span></div></div></article>
+          <article class="card late-c"><span class="tick"></span><div class="body"><div class="t">Entregar llaves a Fernando</div><div class="meta"><span class="chip due late num">30-Ago</span></div></div></article>
+        </div>
+        <div class="col today">
+          <div class="col-h"><b style="color:var(--brand)">Hoy</b><span class="n num">3</span></div>
+          <article class="card prio"><span class="tick"></span><div class="body"><div class="t">Sacar ikon pass de correo</div><div class="meta"><span class="chip flame">🔥</span><span class="chip cat">Finanzas</span></div></div></article>
+          <article class="card"><span class="tick"></span><div class="body"><div class="t">Revisar CV Bela</div><div class="meta"><span class="chip cat">Otros</span></div></div></article>
+          <article class="card"><span class="tick"></span><div class="body"><div class="t">Contratar clases de golf</div><div class="meta"><span class="chip cat">Golf club</span></div></div></article>
+        </div>
+        <div class="col">
+          <div class="col-h"><b>Mañana</b><span class="n num">1</span></div>
+          <article class="card"><span class="tick"></span><div class="body"><div class="t">Limpiar casa</div><div class="meta"><span class="chip cat">Personal</span></div></div></article>
+        </div>
+        <div class="col">
+          <div class="col-h"><b>Esta semana</b><span class="n num">2</span></div>
+          <article class="card"><span class="tick"></span><div class="body"><div class="t">Colgar televisión</div><div class="meta"><span class="chip due num">5-Sep</span></div></div></article>
+          <article class="card"><span class="tick"></span><div class="body"><div class="t">Escribirle a Julia</div><div class="meta"><span class="chip cat">Networking</span></div></div></article>
+        </div>
+        <div class="col">
+          <div class="col-h"><b>Después</b><span class="n num">1</span></div>
+          <article class="card"><span class="tick"></span><div class="body"><div class="t">Hacer el research de zapatillas Salomón</div><div class="meta"><span class="chip due num">15-Sep</span></div></div></article>
+        </div>
+        <div class="col">
+          <div class="col-h"><b>Sin fecha</b><span class="n num">0</span></div>
+          <div style="padding:22px 8px;text-align:center;color:var(--ink-3);font-size:13px">Nada aquí</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="legend">
+  <h3>Decisiones que verías al usarlo</h3>
+  <ul>
+    <li><b>Abre en "Hoy", no en un tablero.</b> Vencidas arriba, luego hoy — el mismo contenido que te llega en el brief de las 7:00.</li>
+    <li><b>La captura está siempre visible</b> y entiende lenguaje natural, igual que el bot. Escribe "pagar la luz el viernes" arriba y mira cómo se separa la fecha.</li>
+    <li><b>Eliminar no pregunta: deshace.</b> La acción ocurre al instante y aparece un "Deshacer" — marca una tarea como lista para verlo. Hoy la web usa un <code>window.confirm</code>, que interrumpe por una acción que casi siempre es correcta.</li>
+    <li><b>El arco del día en el acceso</b> es la única pieza puramente conceptual: muestra las 7:00 y las 20:00 porque esa es la estructura real del producto, no un adorno.</li>
+    <li><b>Prioridad como barra ámbar</b> en el borde, no como emoji suelto: se escanea de un vistazo sin ensuciar el texto.</li>
+  </ul>
+  <div class="swatches">
+    <span class="sw"><i style="background:var(--brand)"></i>Marca</span>
+    <span class="sw"><i style="background:var(--amber)"></i>Atención</span>
+    <span class="sw"><i style="background:var(--ok)"></i>Listo</span>
+    <span class="sw"><i style="background:var(--late)"></i>Vencido</span>
+    <span class="sw"><i style="background:var(--ink)"></i>Texto</span>
+    <span class="sw"><i style="background:var(--bg);border:1px solid var(--line)"></i>Fondo</span>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="palette" role="dialog" aria-label="Paleta de comandos">
+    <div class="q"><span style="color:var(--ink-3)">⌘</span><input id="pq" placeholder="Busca una tarea o escribe una nueva…" autocomplete="off"></div>
+    <div class="grp">Acciones</div>
+    <ul>
+      <li class="sel"><span class="ic">+</span>Crear tarea<span class="k">↵</span></li>
+      <li><span class="ic">◉</span>Ir a Hoy<span class="k">G H</span></li>
+      <li><span class="ic">▤</span>Ir al Tablero<span class="k">G T</span></li>
+      <li><span class="ic">✓</span>Completar seleccionada<span class="k">X</span></li>
+      <li><span class="ic">🔥</span>Marcar prioridad<span class="k">P</span></li>
+    </ul>
+    <div class="grp">Tareas</div>
+    <ul>
+      <li><span class="ic">🔥</span>Sacar ikon pass de correo<span class="k">Hoy</span></li>
+      <li><span class="ic">·</span>Firmar rental agreement<span class="k">28-Ago</span></li>
+    </ul>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden><span id="toastMsg">Tarea completada</span><button id="undo">Deshacer</button></div>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const show=s=>{
+  document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('on',x.id==='s-'+s));
+  document.querySelectorAll('.lab-bar .seg [data-s]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.s===s)));
+};
+document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>show(b.dataset.s));
+document.querySelectorAll('[data-goto]').forEach(a=>a.onclick=()=>show(a.dataset.goto));
+
+/* tema */
+const setT=(v,el)=>{
+  if(v) document.documentElement.setAttribute('data-theme',v);
+  else document.documentElement.removeAttribute('data-theme');
+  [$('tLight'),$('tDark'),$('tSys')].forEach(b=>b.setAttribute('aria-pressed',String(b===el)));
+};
+$('tLight').onclick=e=>setT('light',e.target);
+$('tDark').onclick=e=>setT('dark',e.target);
+$('tSys').onclick=e=>setT(null,e.target);
+
+/* ⌘K */
+const openK=()=>{$('scrim').hidden=false;$('pq').focus();};
+const closeK=()=>{$('scrim').hidden=true;};
+$('openK').onclick=openK;
+document.querySelectorAll('[data-openk]').forEach(b=>b.onclick=openK);
+$('scrim').onclick=e=>{if(e.target===$('scrim'))closeK();};
+addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('scrim').hidden?openK():closeK();}
+  if(e.key==='Escape')closeK();
+});
+
+/* captura con lenguaje natural — el mismo criterio que usaría el parser real */
+const DAYS={'lunes':1,'martes':2,'miércoles':3,'miercoles':3,'jueves':4,'viernes':5,'sábado':6,'sabado':6,'domingo':0};
+const MON=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const CATS={'luz':'Finanzas','pagar':'Finanzas','banco':'Finanzas','tarjeta':'Finanzas','gym':'Salud','doctor':'Salud','clase':'Estudios','llamar':'Work','mail':'Work','correo':'Work'};
+$('cap').addEventListener('input',e=>{
+  const t=e.target.value.toLowerCase(); const out=[];
+  const now=new Date();
+  const fmt=d=>`${d.getDate()}-${MON[d.getMonth()]}`;
+  if(/\bhoy\b/.test(t)) out.push(['date','Hoy']);
+  else if(/\bmañana\b|\bmanana\b/.test(t)){const d=new Date(now);d.setDate(d.getDate()+1);out.push(['date',fmt(d)]);}
+  else {
+    for(const [w,n] of Object.entries(DAYS)){
+      if(new RegExp('\\b'+w+'\\b').test(t)){
+        const d=new Date(now); let add=(n-d.getDay()+7)%7; if(add===0)add=7;
+        d.setDate(d.getDate()+add); out.push(['date',fmt(d)]); break;
+      }
+    }
+  }
+  for(const [w,c] of Object.entries(CATS)) if(t.includes(w)){out.push(['cat',c]);break;}
+  $('capParsed').innerHTML=out.map(([k,v])=>`<span class="pill-mini ${k}">${v}</span>`).join('');
+});
+
+/* completar con deshacer, en vez de confirmar */
+let undoFn=null,tHide=null;
+const toast=(msg,fn)=>{
+  $('toastMsg').textContent=msg; undoFn=fn; $('toast').hidden=false;
+  clearTimeout(tHide); tHide=setTimeout(()=>{$('toast').hidden=true;undoFn=null;},4200);
+};
+$('undo').onclick=()=>{ if(undoFn)undoFn(); $('toast').hidden=true; undoFn=null; };
+document.querySelectorAll('.tick').forEach(t=>{
+  const go=()=>{
+    const card=t.closest('.card'); const was=t.classList.contains('done');
+    t.classList.toggle('done',!was); card.classList.toggle('done',!was);
+    t.setAttribute('aria-checked',String(!was));
+    if(!was) toast('Tarea completada',()=>{t.classList.remove('done');card.classList.remove('done');t.setAttribute('aria-checked','false');});
+  };
+  t.onclick=go;
+  t.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();go();}};
+});
+</script>
