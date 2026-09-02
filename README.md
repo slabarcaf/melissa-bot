@@ -13,6 +13,34 @@ Melissa (deployed as "Sydney") is a multi-user AI assistant that lives in Telegr
 | Task dashboard repo | `~/demo/task-dashboard` → `github.com/slabarcaf/task-dashboard` (private) |
 | Model | `gpt-5-mini`, shared by all users |
 
+### Which account owns what
+
+The system is split across **three different identities**. This is the first thing that blocks
+someone picking the project up, because signing in to one of them is not enough.
+
+| Service | Account | Holds |
+|---|---|---|
+| **GitHub** | `slabarcaf` | Both repos: `melissa-bot` and `task-dashboard` |
+| **Vercel** | Berkeley (`santiago.labarca@berkeley.edu`) | The task-dashboard deployment |
+| **Google Cloud** | Berkeley | OAuth clients — project number `<gcp-project-number>` |
+| Oracle Cloud | — | The VM, reached as `opc@$VM_HOST` with `~/.ssh/id_ed25519` |
+| Neon | *to confirm* | The Postgres database behind the task API |
+
+Consequences worth knowing before you touch anything:
+
+- **Vercel (Berkeley) deploys from GitHub (`slabarcaf`)** — a cross-account link. It works because the
+  Vercel GitHub App was granted access to that repo; it is not something Git itself knows about.
+- The `gh` CLI on Santiago's Mac is authenticated **only as `slabarcaf`**. An older
+  `task-dashboard` repo still exists under a separate `santiagolabarca` GitHub account and is kept
+  as `old-origin-santiagolabarca`; it is history, not the source of truth.
+- Google Cloud project `<gcp-project-number>` holds **two** OAuth clients that must not be confused:
+  - Web client `…-p82fvab9n0fkdou4nevr0na7k8q9jbs3` — the dashboard's Google Sign-In. Adding a
+    Vercel URL to its *Authorized JavaScript origins* is required for login to work on a new
+    deployment, and is safe.
+  - Desktop client `…-lo4mtacmbhh7taph181efi5ol62qgvc4` — the **bot's** Gmail/Calendar/Sheets
+    access. Editing or regenerating it breaks Sydney's Google access and forces re-minting the
+    refresh token by hand. Do not touch it.
+
 Companion docs: `ONBOARDING.md` (how a new user is created), `MODULES.md` (what each module does and
 who may use it), `CLAUDE.md` (invariants), newest `HANDOFF-*.md` (current state), newest `PLAN-*.md`
 (roadmap).
