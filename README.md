@@ -15,21 +15,24 @@ Melissa (deployed as "Sydney") is a multi-user AI assistant that lives in Telegr
 
 ### Which account owns what
 
-The rule is short: **everything is the Berkeley Google account except GitHub, which is `slabarcaf`.**
-Worth knowing up front, because signing in to one of them is not enough to work on this project.
+The rule is short: **GitHub and Vercel are `slabarcaf`; Google Cloud and Neon are the Berkeley
+Google account.** Worth knowing up front, because signing in to one of them is not enough to work on
+this project.
 
 | Service | Account | Holds |
 |---|---|---|
 | **GitHub** | `slabarcaf` | Both repos: `melissa-bot` and `task-dashboard` |
-| **Vercel** | Berkeley (`santiago.labarca@berkeley.edu`) | The task-dashboard deployment, `task-dashboard-c7q2.vercel.app` |
-| **Google Cloud** | Berkeley | OAuth clients — project number `<gcp-project-number>` |
+| **Vercel** | `slabarcaf` | The task-dashboard deployment, `task-dashboard-c7q2.vercel.app` |
+| **Google Cloud** | Berkeley (`santiago.labarca@berkeley.edu`) | OAuth clients — project number `<gcp-project-number>` |
 | Oracle Cloud | — | The VM, reached as `opc@$VM_HOST` with `~/.ssh/id_ed25519` |
 | **Neon** | Berkeley | The Postgres database behind the task API — `us-east-1`, host `<neon-host>…aws.neon.tech`. Shared by every Vercel project that has ever pointed at it |
 
 Consequences worth knowing before you touch anything:
 
-- **Vercel (Berkeley) deploys from GitHub (`slabarcaf`)** — a cross-account link. It works because the
-  Vercel GitHub App was granted access to that repo; it is not something Git itself knows about.
+- **Vercel and GitHub are the same identity (`slabarcaf`)**, so the deploy link is straightforward:
+  a push to `main` on `slabarcaf/task-dashboard` is what Vercel builds. The split that does matter is
+  Google: the OAuth clients live under the Berkeley account, so adding a new deployment URL to the
+  sign-in client means switching identities to do it.
 - The `gh` CLI on Santiago's Mac is authenticated **only as `slabarcaf`**. An older
   `task-dashboard` repo still exists under a separate `santiagolabarca` GitHub account and is kept
   as `old-origin-santiagolabarca`; it is history, not the source of truth.
