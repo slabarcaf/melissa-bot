@@ -52,8 +52,7 @@ them map to the status `Done`. Users never need an ID.
 Deletion always confirms the task name first.
 
 **Priority.** *"urgente"*, *"importante"*, *"asap"* marks a task 🔴 and floats it to the top.
-Note: priority is stored in a JSON file on the VM, **not in the database**, so the web UI cannot see
-it (Phase 3 migrates this).
+Stored as `tasks.is_priority` in the database since 2026-09-01, so the bot and the web agree on it.
 
 **Categories.** Each user has their own list, chosen during onboarding. A new one is created only
 when the user explicitly asks, and Sydney warns if a similar one already exists — this prevents the
@@ -64,8 +63,7 @@ creates the next occurrence.
 
 ## Debts (`finanzas`)
 
-Who owes the user money and who they owe. Stored in **SQLite on the VM**, hard-isolated by
-`user_id` — this is the one module with real per-user isolation at the data layer.
+Who owes the user money and who they owe. Stored in **SQLite on the VM**, hard-isolated by `user_id`.
 
 **Adding.** *"Juan me debe 50 dólares por un asado"*, *"le debo a María 200 pesos"*. Sydney confirms
 name, amount, currency and direction in one message before saving. Missing currency defaults to USD
