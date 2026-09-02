@@ -9,7 +9,7 @@ Melissa (deployed as "Sydney") is a multi-user AI assistant that lives in Telegr
 | Telegram bot | **@Melizion_bot** (token in `config.json`) |
 | Owner chat id | `<owner-chat-id>` (Santiago — the admin checks compare against this) |
 | VM | `opc@$VM_HOST`, service `melissa-bot`, runtime `/opt/melissa/whatsapp-bot` |
-| Task API | `https://task-dashboard-nine-ashen.vercel.app` (`task_api_base`) |
+| Task API | `https://task-dashboard-c7q2.vercel.app` (`task_api_base`) — cut over 2026-09-01 |
 | Task dashboard repo | `~/demo/task-dashboard` → `github.com/slabarcaf/task-dashboard` (private) |
 | Model | `gpt-5-mini`, shared by all users |
 
@@ -21,7 +21,7 @@ someone picking the project up, because signing in to one of them is not enough.
 | Service | Account | Holds |
 |---|---|---|
 | **GitHub** | `slabarcaf` | Both repos: `melissa-bot` and `task-dashboard` |
-| **Vercel** | Berkeley (`santiago.labarca@berkeley.edu`) | The task-dashboard deployment |
+| **Vercel** | Berkeley (`santiago.labarca@berkeley.edu`) | The task-dashboard deployment, `task-dashboard-c7q2.vercel.app` |
 | **Google Cloud** | Berkeley | OAuth clients — project number `<gcp-project-number>` |
 | Oracle Cloud | — | The VM, reached as `opc@$VM_HOST` with `~/.ssh/id_ed25519` |
 | Neon | *to confirm* | The Postgres database behind the task API |
