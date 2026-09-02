@@ -1600,6 +1600,14 @@ async function poll() {
         continue;
       }
 
+      // A t.me/<bot>?start=link_ABC12345 deep link arrives as "/start link_ABC…".
+      // Rewriting it here means the web can offer one tappable link instead of
+      // asking someone to copy a code into a chat, and both paths share the
+      // same handler below.
+      if (/^\/start\s+link_/i.test(text)) {
+        text = '/link ' + text.replace(/^\/start\s+link_/i, '').trim();
+      }
+
       // ── Connect a web account: /link CODE ────────────────────────────────
       // Handled before the authorization check on purpose: whoever sends this
       // has an account on the web but does not exist to the bot yet, which is

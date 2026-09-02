@@ -34,6 +34,11 @@ These came out of watching the first invited user (the second user) go through v
 7. **State the maximum.** There are exactly two brief slots. Asking for three used to silently
    produce two.
 
+> **Where this is going:** `ACCESS-DESIGN.md` describes the agreed target — the **web** becomes the
+> default door and Telegram becomes an optional connection you add from Settings. The flow below is
+> what runs today and stays correct until that lands. The connection half is already built: see
+> `/link` at the end of this file.
+
 ## Entry: the invite
 
 Onboarding is invite-only. There is no open sign-up.
@@ -214,6 +219,23 @@ Santiago-only, handled before the LLM in the polling loop:
 | `/invite <Name> [email]` | Mint an invite code, optionally email it |
 | `/resetuser <id>` | Set `onboarding = 'new'` and re-send the welcome. **Keeps tasks, debts, categories and settings.** Drops that user's brief crons until they finish again |
 | `/deleteuser <id> confirm` | Delete the account and its debts. Two-step: without `confirm` it only shows what will be lost |
+
+## Connecting an existing web account — `/link`
+
+Someone who signed in on the dashboard first has an account there but does not exist to the bot. This
+is how the two become one person. Handled **before** the authorization check, since by definition the
+sender is not yet a registered chat.
+
+1. In the dashboard: Settings → Telegram → Conectar. The browser calls `POST /api/telegram/link` and
+   receives a single-use code, valid 15 minutes.
+2. The person either taps `https://t.me/Melizion_bot?start=link_<CODE>` — which arrives as
+   `/start link_<CODE>` and is rewritten to `/link <CODE>` — or types `/link <CODE>` by hand.
+3. The bot calls `POST /api/telegram/redeem`, which sets `users.telegram_chat_id` in Postgres.
+4. On success the bot creates the local record and runs the onboarding above, because language,
+   timezone and brief times live in its own SQLite and the web has not collected them.
+
+Refusals are specific: `not_found`, `expired`, `used`, and `chat_taken` (that Telegram already
+belongs to another account). Attempts are covered by the same brute-force throttle as invite codes.
 
 Both destructive commands refuse to target Santiago's own chat id, and refuse an id that is not in
 the database.
