@@ -107,12 +107,12 @@ In briefs, use this exact structure (omit any section that has no content):
 
 ✅ *TAREAS*
 *[Category]*
-• 🔴 [priority task — only if 🔴 appears in tool output] — [date]
-• [regular task — no emoji] — [date]
-• 🔜 [task due TOMORROW — only if 🔜 appears in tool output] — [date]
+• 🔴 [priority task — only if 🔴 appears in tool output] ([date])
+• [regular task — no emoji] ([date])
+• 🔜 [task due TOMORROW — only if 🔜 appears in tool output] ([date])
 
 *[Next Category]*
-• [task] — [date]
+• [task] ([date])
 
 💰 *DEUDAS PENDIENTES*
 • [nombre] — [monto] [moneda] — [Me deben/Debo yo]
@@ -134,8 +134,9 @@ Default filter: "overdue_and_today". Use "overdue_and_today" for morning briefs 
 Triggers: tareas, tasks, qué tengo, lista, muéstrame, enviar tareas, mis tareas, pendientes, show tasks, dame mis tareas → call list_tasks NOW.
 After the tool returns: each line contains [#N] — keep those IDs in memory for update_task/delete_task, but NEVER show [#N] in your reply to the user. This rule applies to all task displays including cron briefings.
 Format each task like this:
-  🔴 Nombre de tarea — 5-May   ← tarea importante (🔴 ya viene en el output)
-  - Nombre de tarea — 5-May    ← tarea normal
+  • 🔴 Nombre de tarea (5-May)   ← tarea importante (🔴 ya viene en el output)
+  • Nombre de tarea (5-May)      ← tarea normal
+The due date always goes in parentheses at the end of the line. Never use a dash before the date.
 Rules: always show the date from the tool output | 🔴 ONLY if it literally appears at the start of the task line in the tool output — overdue tasks are NOT priority by default, NEVER add 🔴 yourself | preserve sort order (most overdue first, today's tasks after) | do NOT skip tasks | do NOT say "tienes X tareas".
 NEVER use list position as taskId — always use the [#N] number from the tool output.
 
@@ -692,7 +693,11 @@ const TOOLS = [
 ];
 
 // ── Telegram helpers ──────────────────────────────────────────────────────────
-function tgRequest(method, body) {
+// Node's https has NO default socket timeout: if Telegram accepts the connection
+// and never answers (observed as a 504 on getFile, 2026-08-26), the promise never
+// settles and the caller's per-chat FIFO queue wedges until a restart. Every call
+// gets a deadline. Long-polling getUpdates passes its own, longer one.
+function tgRequest(method, body, timeoutMs = 20000) {
   const payload = JSON.stringify(body);
   return new Promise((resolve, reject) => {
     const req = https.request(`${TG_BASE}/${method}`, {
@@ -703,20 +708,81 @@ function tgRequest(method, body) {
       res.on('data', c => d += c);
       res.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve({}); } });
     });
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`Telegram ${method} timed out after ${timeoutMs}ms`));
+    });
     req.on('error', reject);
     req.write(payload);
     req.end();
   });
 }
 
+// ── Telegram HTML rendering ───────────────────────────────────────────────────
+// The bot writes *bold* / _italic_ markdown everywhere (prompt, onboarding,
+// briefs). Until 2026-09-01 sendMessage never passed parse_mode, so all of it
+// reached users as literal asterisks.
+//
+// We render to HTML rather than Markdown because HTML only needs & < > escaped,
+// while Markdown breaks on any stray * _ [ in a user's own task title and makes
+// Telegram reject the whole message.
+const TG_ALLOWED_TAGS = ['b', 'i', 'u', 's', 'code', 'pre'];
+
+// Escape everything first, then re-open only the tags we emit ourselves. Content
+// that came from a user can never introduce markup this way.
+function toTelegramHtml(text) {
+  let out = String(text)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // *bold* — must hug non-space so "2 * 3" is left alone
+  out = out.replace(/\*(?=\S)([^*\n]+?)(?<=\S)\*/g, '<b>$1</b>');
+  // _italic_ — only when the underscores stand at word edges, so IANA zones like
+  // America/Los_Angeles and New_York survive untouched
+  out = out.replace(/(^|[\s(])_(?=\S)([^_\n]+?)(?<=\S)_(?=[\s).,!?:;]|$)/g, '$1<i>$2</i>');
+  for (const t of TG_ALLOWED_TAGS) {
+    out = out.replace(new RegExp(`&lt;${t}&gt;`, 'g'), `<${t}>`)
+             .replace(new RegExp(`&lt;/${t}&gt;`, 'g'), `</${t}>`);
+  }
+  return out;
+}
+
+// Same marker rules, but stripped instead of tagged — used when HTML is rejected.
+function toPlainText(text) {
+  return String(text)
+    .replace(/\*(?=\S)([^*\n]+?)(?<=\S)\*/g, '$1')
+    .replace(/(^|[\s(])_(?=\S)([^_\n]+?)(?<=\S)_(?=[\s).,!?:;]|$)/g, '$1$2');
+}
+
+// Split on line boundaries, never mid-tag. 3500 leaves headroom for the growth
+// escaping adds (& becomes &amp;) within Telegram's 4096 limit.
+function splitForTelegram(text, max = 3500) {
+  if (text.length <= max) return [text];
+  const chunks = [];
+  let cur = '';
+  for (const line of text.split('\n')) {
+    if (line.length > max) {                       // pathological single line
+      if (cur) { chunks.push(cur); cur = ''; }
+      for (let i = 0; i < line.length; i += max) chunks.push(line.slice(i, i + max));
+      continue;
+    }
+    if (cur && cur.length + line.length + 1 > max) { chunks.push(cur); cur = ''; }
+    cur = cur ? `${cur}\n${line}` : line;
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
 async function sendMessage(chatId, text) {
-  const MAX = 4000;
-  if (text.length <= MAX) {
-    return tgRequest('sendMessage', { chat_id: chatId, text });
+  let last;
+  for (const chunk of splitForTelegram(String(text ?? ''))) {
+    last = await tgRequest('sendMessage', {
+      chat_id: chatId, text: toTelegramHtml(chunk), parse_mode: 'HTML',
+    });
+    // A brief must never be lost to one odd character: fall back to plain text.
+    if (last && last.ok === false) {
+      console.error(`[send] HTML rejected (${last.description || '?'}) — resending as plain text`);
+      last = await tgRequest('sendMessage', { chat_id: chatId, text: toPlainText(chunk) });
+    }
   }
-  for (let i = 0; i < text.length; i += MAX) {
-    await tgRequest('sendMessage', { chat_id: chatId, text: text.slice(i, i + MAX) });
-  }
+  return last;
 }
 
 // ── MCP servers ───────────────────────────────────────────────────────────────
@@ -1420,14 +1486,21 @@ async function runHealthCheck() {
 // health check cron scheduled via scheduleCrons()
 
 // ── Voice transcription ───────────────────────────────────────────────────────
-async function downloadFile(url, destPath) {
+async function downloadFile(url, destPath, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     const proto = url.startsWith('https') ? https : http;
     const file = fs.createWriteStream(destPath);
-    proto.get(url, res => {
+    const fail = err => { file.destroy(); fs.unlink(destPath, () => {}); reject(err); };
+    const req = proto.get(url, res => {
+      if (res.statusCode !== 200) { res.resume(); return fail(new Error(`download HTTP ${res.statusCode}`)); }
       res.pipe(file);
       file.on('finish', () => file.close(resolve));
-    }).on('error', err => { fs.unlink(destPath, () => {}); reject(err); });
+      file.on('error', fail);
+    });
+    // Same reasoning as tgRequest: no default socket timeout means a stalled
+    // download hangs the chat's queue forever. Partial temp file is cleaned up.
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`download timed out after ${timeoutMs}ms`)));
+    req.on('error', fail);
   });
 }
 
@@ -1461,16 +1534,20 @@ async function transcribeVoice(fileId, language) {
   const tmpPath = path.join(os.tmpdir(), `voice_${Date.now()}.ogg`);
   await downloadFile(fileUrl, tmpPath);
 
-  // Step 3: transcribe with Whisper
+  // Step 3: transcribe with Whisper. The SDK has no per-call deadline of its own,
+  // so it gets an AbortSignal for the same queue-wedging reason as the two above.
+  const ac = new AbortController();
+  const killer = setTimeout(() => ac.abort(), 60000);
   try {
     const transcription = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpPath),
       model: 'whisper-1',
       // No language hint → Whisper autodetects (users who haven't picked one yet).
       ...(language ? { language } : {}),
-    });
+    }, { signal: ac.signal });
     return transcription.text;
   } finally {
+    clearTimeout(killer);
     fs.unlink(tmpPath, () => {});
   }
 }
@@ -1482,7 +1559,8 @@ const chatQueues = new Map(); // per-chat FIFO queue — sequential processing p
 
 async function poll() {
   try {
-    const res = await tgRequest('getUpdates', { offset, timeout: 30, allowed_updates: ['message'] });
+    // 30s of long-polling on Telegram's side + 15s of slack before we give up.
+    const res = await tgRequest('getUpdates', { offset, timeout: 30, allowed_updates: ['message'] }, 45000);
     if (!res.ok || !res.result?.length) return;
 
     for (const update of res.result) {
