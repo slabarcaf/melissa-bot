@@ -577,7 +577,7 @@ async function handleOnboarding(chatId, user, text) {
 function describeUser(u) {
   const feats = Object.entries(JSON.parse(u.features || '{}'))
     .filter(([, v]) => v).map(([k]) => k).join(',') || '—';
-  return `• *${u.preferred_name || u.name || '?'}* (${u.name || '?'}) — id \`${u.chat_id}\`\n` +
+  return `• *${u.preferred_name || u.name || '?'}* (${u.name || '?'}) — id <code>${u.chat_id}</code>\n` +
          `  ${u.onboarding} | ${u.timezone} | ${u.language || 'auto'} | briefs ${u.brief_morning || 'off'}/${u.brief_evening || 'off'} | ${feats}`;
 }
 
@@ -1597,7 +1597,7 @@ async function poll() {
         if (!label) { await sendMessage(chatId, 'Uso: /invite <Nombre> [email@ejemplo.com]'); continue; }
         const code = db.createInviteCode(label, chatId, email);
         const link = `https://t.me/${botUsername || 'Melizion_bot'}?start=${code}`;
-        let reply   = `✅ Código generado para ${label}:\n\`${link}\`\nVálido por 30 días.`;
+        let reply   = `✅ Código generado para ${label}:\n<code>${link}</code>\nVálido por 30 días.`;
         if (email) {
           try {
             await sendInviteEmail(email, label, link);
