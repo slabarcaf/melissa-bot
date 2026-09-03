@@ -81,7 +81,7 @@ doors — but taking advantage of being a browser:
 This is the piece that makes the two halves one account, and **it is built and live**.
 
 1. Settings → Telegram → **Conectar**.
-2. The browser calls `POST /api/telegram/link` and gets a single-use code, valid 15 minutes.
+2. The browser calls `POST /api/telegram/link` and gets a single-use code, valid 24 hours.
 3. The page shows two ways to use it:
    - a **tappable link** — `https://t.me/Melizion_bot?start=link_<CODE>` — which is one click on a
      phone, and
@@ -90,12 +90,36 @@ This is the piece that makes the two halves one account, and **it is built and l
    confirms by name.
 5. Settings now shows **Conectado** and a Desconectar action.
 
+#### What the tappable link actually does, per situation
+
+A `t.me` link is a real web page *and* a universal/app link, so it degrades instead of breaking — but
+one common case it does not solve at all.
+
+| Situation | What happens |
+|---|---|
+| **Telegram installed, iOS or Android** | The OS opens the Telegram app straight at the bot, with a START button. Identical on both platforms — this is not an iOS-versus-Android problem |
+| **Telegram not installed** | `t.me` opens as an ordinary web page offering the app stores. **The flow is not lost:** the `start=link_…` payload stays in the URL, so after installing, the same link works. But it *is* interrupted — install, create an account, verify a phone number — which is why link codes now last **24 hours** instead of 15 minutes. A 15-minute code guaranteed they came back to a dead one |
+| **Telegram Desktop installed** | `t.me` offers to hand off to the desktop app |
+| **Neither, on a laptop** | `t.me` offers Telegram Web (`web.telegram.org`), which works in the browser |
+| **⚠️ Dashboard on a laptop, Telegram on the phone** | **The link is useless here** — tapping it on the laptop tries to open Telegram on the laptop. This is probably the *most* common case, and it is why the code must always be shown too |
+
+So the Settings screen has to offer three things, not one:
+
+1. **The tappable link**, for someone on the phone that has Telegram.
+2. **A QR code** of that same link, for the laptop-to-phone case — scan it and the phone opens Telegram
+   at the right place. This is the piece that makes the common case work.
+3. **The code itself, with a copy button**, as the fallback that always works: open Telegram anywhere
+   and type `/link ABC12345`.
+
+Plus an honest "I don't have Telegram" line that says what installing involves and that the code
+keeps working, rather than letting someone tap into a store and lose the thread.
+
 Refusals are specific on purpose, because "invalid code" tells nobody what to do:
 
 | Reason | What the bot says |
 |---|---|
 | `not_found` | The code does not exist — generate a new one |
-| `expired` | Codes last 15 minutes — generate a new one |
+| `expired` | Codes last 24 hours — generate a new one |
 | `used` | Already used — generate a new one |
 | `chat_taken` | This Telegram is already connected to another account |
 
@@ -161,11 +185,30 @@ strays from the web picker leaking in:
 
 (`convencimiento` is the mis-transcribed task from the 2026-08-26 handoff, still there.)
 
-**Recommendation:** the web should suggest visibly rather than assign silently — as you type, infer
-the category and show it as an editable chip, which is the browser's version of the bot asking
-"Esto parece Finanzas, ¿lo agrego ahí?". And pick one vocabulary. **This needs Santiago's decision:**
-the existing data is overwhelmingly Spanish, so the least disruptive choice is Spanish, retiring
-`ONBOARDING_SUGGESTED_TIPOS` (the English list) and migrating the handful of English rows.
+**Resolved 2026-09-02: Spanish is canonical, and English users get translated labels.**
+
+The insight is that `tasks.tipo` holds an **identifier**, not display text. Conflating the two is what
+made a second English list seem necessary in the first place. So:
+
+- `src/lib/categories.ts` holds the one canonical set — mirroring the bot's `PRESET_CATEGORIES` —
+  plus a label per language, and a reverse map so a form showing "Finances" still writes `Finanzas`.
+- The English `ONBOARDING_SUGGESTED_TIPOS` list is retired.
+- Every `"Others"` fallback became `"Otros"`, so the form and the API stop disagreeing about the name
+  of the same category.
+- Categories a user invents are never translated. Nobody expects the `Viajes` they typed to appear as
+  "Travel".
+- Interface language currently follows the browser; it moves into Settings once the preference store
+  is unified.
+
+**Still to do on the bot side:** its `PRESET_CATEGORIES` list is shown to the model as-is, so an
+English-speaking user is offered Spanish names during onboarding. The same label layer belongs there,
+with one hard rule for the prompt — *translate freely when talking to the user, but only ever send an
+identifier to a tool*. The existing `CATEGORY INTEGRITY` rule and the `ADD_TASK_NEEDS_CATEGORY` guard
+already back this up.
+
+**A small cleanup awaits approval:** the stray English rows are all Santiago's own — `University` (3)
+and `Job` (1) — plus one-offs `Deportes` and `convencimiento` (the mis-transcribed task from the
+2026-08-26 handoff). Four or five rows, his data, his call on where they should land.
 
 ## Build order
 

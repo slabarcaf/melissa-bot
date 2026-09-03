@@ -1632,7 +1632,7 @@ async function poll() {
             recordInviteFail(chatId);
             const why = {
               not_found:  'Ese código no existe. Genera uno nuevo desde Ajustes → Telegram en el dashboard.',
-              expired:    'Ese código ya venció — duran 15 minutos. Genera uno nuevo desde el dashboard.',
+              expired:    'Ese código ya venció — duran 24 horas. Genera uno nuevo desde el dashboard.',
               used:       'Ese código ya se usó. Genera uno nuevo desde el dashboard.',
               chat_taken: 'Este Telegram ya está conectado a otra cuenta. Desconéctalo primero desde esa cuenta.',
             }[data.reason] || 'No pude conectar la cuenta. Intenta de nuevo en un momento.';

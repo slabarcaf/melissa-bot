@@ -227,7 +227,7 @@ is how the two become one person. Handled **before** the authorization check, si
 sender is not yet a registered chat.
 
 1. In the dashboard: Settings → Telegram → Conectar. The browser calls `POST /api/telegram/link` and
-   receives a single-use code, valid 15 minutes.
+   receives a single-use code, valid 24 hours.
 2. The person either taps `https://t.me/Melizion_bot?start=link_<CODE>` — which arrives as
    `/start link_<CODE>` and is rewritten to `/link <CODE>` — or types `/link <CODE>` by hand.
 3. The bot calls `POST /api/telegram/redeem`, which sets `users.telegram_chat_id` in Postgres.
