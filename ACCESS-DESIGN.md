@@ -155,6 +155,10 @@ Everything about the account, opened by clicking the user in the bottom-left rai
 - **Apariencia:** theme (light / dark / system), language.
 - **Briefs:** morning and evening, each with a time and an on/off switch. Two maximum — the schema
   has exactly two slots, and the mockup states the limit rather than silently dropping a third.
+  **Briefs are delivered through Telegram only** (decided 2026-09-02), so for someone who has not
+  connected it the whole section must read as unavailable — times greyed out, with a line saying the
+  briefs arrive on Telegram and a link to the connect flow. Showing pickers that quietly do nothing
+  would be worse than showing none.
 - **Ubicación:** timezone. Changing it here must reschedule the bot's cron, not just store a string.
 - **Categorías:** the user's own list.
 - **Telegram:** **Conectar** with the step-by-step above, or **Conectado** with a Desconectar action.
@@ -219,12 +223,21 @@ and `Job` (1) — plus one-offs `Deportes` and `convencimiento` (the mis-transcr
 5. Collapse the two preference stores into one.
 6. Category vocabulary decision and migration.
 
-## Open questions for Santiago
+## Decided 2026-09-02
 
-- **Which category vocabulary wins?** Spanish is the safe answer given the data, but it is a product
-  call, and it decides whether the English list gets retired.
-- **What happens to the four orphan accounts** (Clemente, Rafael, Teresita, Cristian — plus Francisco
-  and Brandon)? Invite them properly, or leave them?
-- **Do briefs stay Telegram-only?** They are the strongest argument for connecting Telegram. Web push
-  is possible later but far less reliable, especially on iOS.
+- **Spanish is the canonical vocabulary**, with translated labels for display. Done.
+- **Briefs are delivered through Telegram only.** No web push, not now and not as a "later" that
+  shapes the design. This is what gives connecting Telegram a concrete reason to exist, and it means
+  the Settings panel must present the brief section as unavailable until the account is connected.
+  Reconsider only if web push becomes worth its unreliability, especially on iOS.
+- **The orphan accounts were deleted.** Six accounts that had signed in with Google and never
+  connected Telegram, together with four tasks between them — all of which were test junk
+  ("prueba 1", "prueba 2", "cocinar"). Two accounts remain: Santiago and the second user.
+- **The stray categories were remapped**, not deleted: `University`→`Clases`, `Job`→`Otros`,
+  `Deportes`→`Salud`, `convencimiento`→`Personal`. All six tasks were already `Done`, so nothing
+  operational moved; the task text was kept.
+
+## Still open
+
 - **Should the admin invite screen be in the dashboard at all**, or is `/invite` from Telegram enough?
+- The preference-store split (see above) — the next real piece of work.

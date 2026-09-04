@@ -109,6 +109,10 @@ that is fixed.
 
 ## Briefs
 
+**Delivered through Telegram only** (decided 2026-09-02). An account that has never connected
+Telegram receives no briefs at all, which is the main practical reason to connect it. There is no web
+push and none is planned.
+
 Not a flag — a scheduled push assembled from whichever modules a user has. Each user picks their own
 times during onboarding (defaults 07:00 and 20:00), scheduled in their own timezone, and can change
 them any time: *"mándame el brief a las 8"*, *"ya no quiero el de la noche"*.
