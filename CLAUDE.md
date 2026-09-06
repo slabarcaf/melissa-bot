@@ -12,6 +12,8 @@ ls HANDOFF-*.md | tail -1
 
 That file is the source of truth for current status, the open defects, and the decisions not to relitigate. This file holds only the invariants that outlive any single handoff. `README.md` documents the features and config.
 
+El dashboard web vive en otro repo (`slabarcaf/task-dashboard`) y tiene su propio `CLAUDE.md` y su `DESIGN.md`. Cualquier cosa visual se decide allá, no aquí.
+
 `ACCESS-DESIGN.md` is the agreed target for how people get in: web-first onboarding, Telegram as an optional connection. `ONBOARDING.md` stays the spec for what runs today.
 
 **For where the project is going**, read the newest `PLAN-*.md` — currently `PLAN-2026-09-01-producto.md`, the phased roadmap from Telegram-only assistant to multi-user product (accounts, web UI, PWA, per-user modules). The plan is the roadmap; the handoff is the state. Plans live here rather than in `~/.claude/plans/`, which is not durable — an earlier handoff already points at a plan file that no longer exists.
