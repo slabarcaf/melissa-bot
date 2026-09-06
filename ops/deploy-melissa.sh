@@ -19,8 +19,15 @@ GIT_SSH_COMMAND='ssh -i /root/.ssh/github_deploy' git pull origin "$BRANCH"
 # tasks-mcp.js / calendar-mcp.js are managed on the server (path-parameterized) and NOT overwritten.
 cp -f melissa.js    "$DEST/whatsapp-bot.js"
 cp -f db.js         "$DEST/db.js"
+cp -f prefs.js      "$DEST/prefs.js"
 cp -f package.json  "$DEST/package.json"
 cp -f sheets-mcp.js "$SKILLS/sheets-mcp.js"
+
+# Every require() in whatsapp-bot.js must land here, or the service restarts
+# into a MODULE_NOT_FOUND loop. Fail the deploy before touching systemd instead.
+for f in whatsapp-bot.js db.js prefs.js package.json; do
+  [ -f "$DEST/$f" ] || { echo "MISSING $DEST/$f — aborting before restart"; exit 1; }
+done
 
 cd "$DEST"
 npm install --omit=dev
