@@ -31,6 +31,9 @@ Do not add project status to this file. Status goes in a new dated handoff, so i
   If they differ, reconcile first. Never overwrite `whatsapp-bot.js` with the local file blindly.
 - **`melissa.js` in this repo deploys as `/opt/melissa/whatsapp-bot/whatsapp-bot.js`.** Different filename, same file.
 - **`tasks-mcp.js` and `calendar-mcp.js` exist only on the VM** (`/opt/melissa/.openclaw/skills/`, mirrored in `/root/.openclaw/skills/`). They are not in this repo. Editing them means editing them on the VM, with a backup.
+- **Preferences are not stored here.** Language, timezone, brief times and categories live in the dashboard's Postgres; `melissa.db` is a **mirror** kept fresh by `prefs.js`. Reads are synchronous from the mirror so cron callbacks work and a cold API is staleness rather than an outage; writes go to the API first and are mirrored after. Never write a preference straight into SQLite — it will be overwritten by the next sync.
+- **`categories.json` is a fallback, not a source.** It is only read when a user's mirror is empty.
+- **The deploy script copies a fixed list of files.** Adding a `require()` to a new local module means adding it to `ops/deploy-melissa.sh`, or the service restarts into a MODULE_NOT_FOUND loop with the old process already gone. The script now aborts before touching systemd if a file is missing.
 - **`config.json` is gitignored and lives only on the VM**, mode `0600`, owner `melissa`. It holds every credential. Any flag added there must be documented in `README.md`, or it becomes invisible from the repo.
 - **Restart after every deploy:** `sudo systemctl restart melissa-bot`. Verify with `systemctl is-active`.
 - **Only one process may poll the Telegram token at a time.** Two pollers silently steal each other's updates.
