@@ -8,6 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const db = require('./db');
+const prefs = require('./prefs');
 
 const CFG_PATH = process.env.CFG_PATH || '/root/whatsapp-bot/config.json';
 const CATS_PATH = process.env.CATS_PATH || '/root/whatsapp-bot/categories.json';
@@ -34,6 +35,10 @@ function buildCategoriesSection() {
 function buildCategoriesSectionForUser(user) {
   let cats;
   try { cats = JSON.parse(user.categories || '[]'); } catch { cats = []; }
+  // Falls back to the shared file rather than a three-item stub. That file is a
+  // safety net now, not a source of truth: it is what this prompt uses only when
+  // the mirror is empty — a brand-new user, or a sync that has not run yet.
+  if (!cats.length) { try { cats = JSON.parse(fs.readFileSync(CATS_PATH, 'utf8')); } catch { cats = []; } }
   if (!cats.length) cats = [{ name: 'Work', keywords: ['trabajo','reunión','meeting'] }, { name: 'Personal', keywords: ['personal','casa'] }, { name: 'Otros', keywords: [] }];
   const names = cats.map(c => c.name).join(' | ');
   const kws   = cats.filter(c => c.keywords && c.keywords.length > 0)
@@ -425,7 +430,11 @@ function filterToolsForUser(user) {
 
 function buildSystemPromptForUser(user) {
   const isSantiago = String(user.chat_id) === String(cfg.telegram_chat_id);
-  if (isSantiago) return SYSTEM_PROMPT.replace('__CATEGORIES__', buildCategoriesSection());
+  // Santiago's categories used to come from the shared categories.json while
+  // everyone else's came from their own row — the last place the two stores
+  // could disagree, and they did: the file lists eight, his real tasks use
+  // thirteen. Everyone reads the same mirror now.
+  if (isSantiago) return SYSTEM_PROMPT.replace('__CATEGORIES__', buildCategoriesSectionForUser(user));
 
   const preferredName = user.preferred_name || user.name || 'tú';
   const features      = JSON.parse(user.features || '{}');
@@ -579,6 +588,17 @@ async function handleOnboarding(chatId, user, text) {
   if (state === 'awaiting_briefs') {
     const { morning, evening, tooMany } = parseBriefTimes(text);
     db.updateUser(chatId, { brief_morning: morning, brief_evening: evening, onboarding: 'done' });
+    // Onboarding never blocks on the dashboard: a person finishing setup must
+    // not be stopped by an API that is cold. The mirror already holds the
+    // answer, and the background sync pushes nothing — so if this fails, the
+    // web will not know these times until they are set again. Logged loudly for
+    // that reason.
+    prefs.push(cfg, chatId, {
+      briefMorning: morning || '',
+      briefEvening: evening || '',
+      language: lang === 'en' ? 'en' : 'es',
+      timezone: (db.getUser(chatId) || {}).timezone || 'America/Los_Angeles'
+    }).catch(err => console.log(`[prefs] onboarding push failed for ${chatId}: ${err.message}`));
     scheduleCrons(); // user is now 'done' → give them their brief crons
     await sendMessage(chatId, T.briefsSet(morning, evening, tooMany));
     const name = (db.getUser(chatId) || {}).preferred_name || (lang === 'en' ? 'you' : 'tú');
@@ -874,7 +894,14 @@ function scheduleCrons() {
 
 async function doUpdateTimezone({ timezone }, chatId) {
   if (!timezone) return 'Error: timezone string required';
-  if (chatId) db.updateUser(chatId, { timezone });
+  if (chatId) {
+    try {
+      await prefs.push(cfg, chatId, { timezone });
+    } catch (err) {
+      console.log(`[prefs] timezone push failed for ${chatId}: ${err.message}`);
+      return 'No pude guardar el cambio de zona horaria ahora mismo. Inténtalo en un momento.';
+    }
+  }
   // cfg.timezone stays Santiago's zone — it drives the global health/monthly
   // crons and the calendar timezone check.
   if (!chatId || String(chatId) === String(cfg.telegram_chat_id)) {
@@ -996,7 +1023,18 @@ async function callTool(name, args, chatId) {
       if (args.morning !== undefined) { if (!valid(args.morning)) return 'Formato inválido — usa HH:MM (24h) o "" para desactivar.'; upd.brief_morning = args.morning; }
       if (args.evening !== undefined) { if (!valid(args.evening)) return 'Formato inválido — usa HH:MM (24h) o "" para desactivar.'; upd.brief_evening = args.evening; }
       if (!Object.keys(upd).length) return 'Nada que actualizar — pasa morning y/o evening.';
-      db.updateUser(chatId, upd);
+      // Postgres first: if it refuses, the mirror keeps the old value and the
+      // two never disagree in the direction where the bot believes something
+      // that was never stored.
+      try {
+        await prefs.push(cfg, chatId, {
+          ...(upd.brief_morning !== undefined ? { briefMorning: upd.brief_morning } : {}),
+          ...(upd.brief_evening !== undefined ? { briefEvening: upd.brief_evening } : {})
+        });
+      } catch (err) {
+        console.log(`[prefs] push failed for ${chatId}: ${err.message}`);
+        return 'No pude guardar el cambio ahora mismo. Inténtalo en un momento.';
+      }
       scheduleCrons();
       const u = db.getUser(chatId);
       return `✅ Briefs actualizados: mañana ${u.brief_morning || 'desactivado'} / noche ${u.brief_evening || 'desactivado'}.`;
@@ -1008,8 +1046,18 @@ async function callTool(name, args, chatId) {
       const user = db.getUser(chatId);
       const cats = JSON.parse(user.categories || '[]');
       if (!cats.find(c => c.name === catName)) cats.push({ name: catName, keywords });
-      db.updateUser(chatId, { categories: JSON.stringify(cats) });
-      return `✅ Categoría "${catName}" creada. Ya disponible en la próxima conversación.`;
+      try {
+        await prefs.push(cfg, chatId, {
+          tipoOptions: cats.map(c => c.name).filter(Boolean),
+          categoryKeywords: Object.fromEntries(
+            cats.filter(c => c.keywords && c.keywords.length).map(c => [c.name, c.keywords])
+          )
+        });
+      } catch (err) {
+        console.log(`[prefs] category push failed for ${chatId}: ${err.message}`);
+        return 'No pude guardar la categoría ahora mismo. Inténtalo en un momento.';
+      }
+      return `✅ Categoría "${catName}" creada. Ya disponible en la próxima conversación y en la web.`;
     }
 
     // ── Tell the Task API which user this call is for ────────────────────────
@@ -1806,7 +1854,20 @@ async function start() {
   console.log('✅ Bot started — polling Telegram (no webhook needed)');
   console.log('   Send any message to @Melizion_bot on Telegram');
 
+  // Preferences live in Postgres; SQLite is a mirror. Refresh it before the
+  // brief crons are built out of it, or the first day after a change on the web
+  // still fires at the old hour. Failures are logged and tolerated — the mirror
+  // is what makes an unreachable dashboard a staleness problem instead of an
+  // outage.
+  try {
+    const moved = await prefs.pullAll(cfg);
+    console.log(`[prefs] mirror refreshed (${moved} user(s) changed)`);
+  } catch (err) {
+    console.log(`[prefs] initial sync failed, using the local mirror: ${err.message}`);
+  }
+
   scheduleCrons();
+  prefs.startBackgroundSync(cfg, scheduleCrons);
   // timezone auto-detect disabled (Calendar API returns stale value)
   // use update_timezone tool or tell Melissa you are in a different city
 
