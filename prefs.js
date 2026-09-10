@@ -95,12 +95,22 @@ function fromMirror(user) {
 }
 
 /**
+ * Reads one user's preferences without touching the mirror.
+ *
+ * The health check needs to compare the two sides, and a read that silently
+ * repairs what it is measuring cannot detect drift.
+ */
+async function fetchRemote(cfg, chatId) {
+  return callApi(cfg, chatId, 'GET');
+}
+
+/**
  * Pulls one user's preferences and refreshes the mirror.
  * Returns true when the mirror actually changed, so the caller can decide
  * whether the brief crons need rebuilding.
  */
 async function pull(cfg, chatId) {
-  const prefs = await callApi(cfg, chatId, 'GET');
+  const prefs = await fetchRemote(cfg, chatId);
   const next = toMirror(prefs);
   const current = db.getUser(chatId) || {};
   const changed = Object.keys(next).some(k => String(current[k] ?? '') !== String(next[k]));
@@ -157,4 +167,4 @@ function startBackgroundSync(cfg, onChange) {
   return timer;
 }
 
-module.exports = { pull, push, pullAll, startBackgroundSync, toMirror, fromMirror };
+module.exports = { fetchRemote, pull, push, pullAll, startBackgroundSync, toMirror, fromMirror };

@@ -1400,24 +1400,69 @@ async function sendBriefing(type, chatId) {
 // morning/evening/health crons scheduled via scheduleCrons() in start()
 
 // ── Nightly health check ───────────────────────────────────────────────────
+/**
+ * Nightly health check, 02:00 in Santiago's timezone.
+ *
+ * The rule this file learned the hard way, on 2026-09-10: **a check that cannot
+ * determine its answer reports a failure, never a pass.** The old orphan-priority
+ * check swallowed its own read error and returned ok:true, so for weeks it was
+ * green without ever having looked at anything.
+ *
+ * Every task call carries X-Telegram-Chat-Id. Since 2026-09-06 the API resolves
+ * a bot request through the chat it names and refuses one that names nobody —
+ * there is no owner fallback any more. A call without the header is a 401, which
+ * is exactly how this check broke.
+ */
 async function runHealthCheck() {
   const results = [];
+  const add = (ok, name, detail) => results.push({ ok, name, detail });
+
+  const taskApi = (chatId) => fetch(`${cfg.task_api_base}/api/tasks`, {
+    headers: {
+      Authorization: `Bearer ${cfg.task_api_secret}`,
+      'X-Telegram-Chat-Id': String(chatId)
+    }
+  });
 
   // 1. Telegram API
   try {
     const r = await tgRequest('getMe', {});
-    results.push(r.ok ? { ok: true, name: 'Telegram API' }
-                       : { ok: false, name: 'Telegram API', detail: JSON.stringify(r) });
-  } catch (e) { results.push({ ok: false, name: 'Telegram API', detail: e.message }); }
+    add(!!r.ok, 'Telegram API', r.ok ? undefined : JSON.stringify(r));
+  } catch (e) { add(false, 'Telegram API', e.message); }
 
-  // 2. Task API
-  try {
-    const r = await fetch(`${cfg.task_api_base}/api/tasks`, {
-      headers: { Authorization: `Bearer ${cfg.task_api_secret}` }
-    });
-    results.push(r.ok ? { ok: true, name: 'Task API' }
-                       : { ok: false, name: 'Task API', detail: `HTTP ${r.status}` });
-  } catch (e) { results.push({ ok: false, name: 'Task API', detail: e.message }); }
+  // 2. Task API — per user, because that is how it is actually used.
+  //    A single anonymous ping cannot see the failure that matters now: one
+  //    person's chat losing its link while everyone else's keeps working.
+  const users = db.getDoneUsers();
+  const tasksByUser = new Map();
+  if (users.length === 0) {
+    add(false, 'Task API', 'no onboarded users — nothing could be checked');
+  } else {
+    const broken = [];
+    let unauthorized = 0;
+    for (const u of users) {
+      const who = u.preferred_name || u.name || u.chat_id;
+      try {
+        const r = await taskApi(u.chat_id);
+        if (!r.ok) {
+          if (r.status === 401) unauthorized++;
+          broken.push(`${who}: HTTP ${r.status}`);
+          continue;
+        }
+        const data = await r.json();
+        tasksByUser.set(u.chat_id, data.tasks || []);
+      } catch (e) { broken.push(`${who}: ${e.message}`); }
+    }
+    // A 401 means one of two very different things, and guessing wrong sends
+    // whoever reads this alert after the wrong problem. The secret is shared by
+    // every user: if all of them are refused it is the token, and if only some
+    // are, those chats have lost their account link.
+    let detail;
+    if (broken.length === 0) detail = `${users.length} usuario(s) OK`;
+    else if (unauthorized === users.length) detail = `401 para todos — revisa task_api_secret`;
+    else detail = broken.join('; ') + (unauthorized ? ' — 401 = ese chat no tiene cuenta vinculada' : '');
+    add(broken.length === 0, 'Task API', detail);
+  }
 
   // 3 & 4. Google OAuth — attempt a token refresh for each account
   for (const [label, refreshToken] of [
@@ -1436,70 +1481,68 @@ async function runHealthCheck() {
         }),
       });
       const j = await r.json();
-      results.push(j.access_token ? { ok: true, name: label }
-                                   : { ok: false, name: label, detail: j.error || JSON.stringify(j) });
-    } catch (e) { results.push({ ok: false, name: label, detail: e.message }); }
+      add(!!j.access_token, label, j.access_token ? undefined : (j.error || JSON.stringify(j)));
+    } catch (e) { add(false, label, e.message); }
   }
 
   // 5. MCP processes still alive
   const mcpAlive = taskServer?.exitCode === null && calendarServer?.exitCode === null && sheetsServer?.exitCode === null;
-  results.push(mcpAlive ? { ok: true, name: 'MCP servers' }
-                        : { ok: false, name: 'MCP servers',
-                            detail: `tasks exitCode=${taskServer?.exitCode} cal exitCode=${calendarServer?.exitCode} sheets exitCode=${sheetsServer?.exitCode}` });
+  add(mcpAlive, 'MCP servers', mcpAlive ? undefined :
+      `tasks exitCode=${taskServer?.exitCode} cal exitCode=${calendarServer?.exitCode} sheets exitCode=${sheetsServer?.exitCode}`);
 
-  // 6. Task DB integrity — invalid statusFinalOutcome values
-  // (values no filter recognizes → task silently disappears from all views)
-  try {
-    const r = await fetch(`${cfg.task_api_base}/api/tasks`, {
-      headers: { Authorization: `Bearer ${cfg.task_api_secret}` }
-    });
-    if (r.ok) {
-      const data = await r.json();
-      const tasks = data.tasks || [];
-      const VALID_STATUS = new Set(["done", "to-do", "on hold", ""]);
-      const badStatus = tasks.filter(
-        t => !VALID_STATUS.has((t.statusFinalOutcome || "").toLowerCase())
-      );
-      results.push(
-        badStatus.length === 0
-          ? { ok: true, name: 'Task DB — status integrity' }
-          : { ok: false, name: 'Task DB — status integrity',
-              detail: `${badStatus.length} task(s) with unknown status: ${badStatus.map(t => `#${t.rowId} "${t.statusFinalOutcome}"`).join(', ')}` }
-      );
-
-      // 7. Pending tasks with no due date (invisible to all date-based filters)
-      const noDueDate = tasks.filter(
-        t => (t.statusFinalOutcome || '').toLowerCase() === 'to-do' && !t.dueDateNextStep
-      );
-      results.push(
-        noDueDate.length === 0
-          ? { ok: true, name: 'Task DB — missing due dates' }
-          : { ok: false, name: 'Task DB — missing due dates',
-              detail: `${noDueDate.length} pending task(s) have no due date and won't appear in any filter: ${noDueDate.map(t => `#${t.rowId} "${(t.toDo || '').slice(0,30)}"`).join(', ')}` }
-      );
-
-      // 8. Orphan priority flags (priority.json references deleted task IDs)
-      try {
-        const priorityRaw = fs.readFileSync(process.env.PRIORITY_FILE || '/root/.openclaw/priority.json', 'utf8');
-        const priority = JSON.parse(priorityRaw);
-        const taskIds = new Set(tasks.map(t => String(t.rowId)));
-        const orphans = Object.keys(priority).filter(id => priority[id] && !taskIds.has(id));
-        results.push(
-          orphans.length === 0
-            ? { ok: true, name: 'Task DB — priority flags' }
-            : { ok: false, name: 'Task DB — priority flags',
-                detail: `${orphans.length} orphan priority flag(s) for deleted tasks: IDs ${orphans.join(', ')}` }
-        );
-      } catch (e) { results.push({ ok: true, name: 'Task DB — priority flags' }); }
-
-    } else {
-      results.push({ ok: false, name: 'Task DB — status integrity', detail: `HTTP ${r.status}` });
-      results.push({ ok: false, name: 'Task DB — missing due dates', detail: `HTTP ${r.status}` });
-      results.push({ ok: false, name: 'Task DB — priority flags', detail: `HTTP ${r.status}` });
+  // 6. Status integrity — a status no filter recognizes makes the task vanish
+  //    from every view without deleting it.
+  //    ⚠️ Keep this list in step with STATUS_FINAL_OUTCOME_OPTIONS in the
+  //    dashboard (src/lib/types.ts). "On-going" was missing here until
+  //    2026-09-10, so the edit dialog could set a perfectly valid status that
+  //    this check would then report as corruption.
+  const VALID_STATUS = new Set(['to-do', 'on-going', 'done', 'on hold', '']);
+  if (tasksByUser.size === 0) {
+    add(false, 'Task DB — status integrity', 'no se pudo leer ninguna lista de tareas');
+  } else {
+    const bad = [];
+    for (const [chatId, tasks] of tasksByUser) {
+      for (const t of tasks) {
+        const status = String(t.statusFinalOutcome || '').toLowerCase();
+        if (!VALID_STATUS.has(status)) bad.push(`#${t.rowId} "${t.statusFinalOutcome}" (chat ${chatId})`);
+      }
     }
-  } catch (e) {
-    results.push({ ok: false, name: 'Task DB — integrity checks', detail: e.message });
+    add(bad.length === 0, 'Task DB — status integrity',
+        bad.length === 0 ? undefined : `${bad.length} tarea(s) con estado desconocido: ${bad.slice(0, 8).join(', ')}`);
   }
+
+  // 7. Preference mirror — the failure mode introduced on 2026-09-06.
+  //    Preferences live in Postgres and melissa.db is a mirror. If the sync
+  //    fails quietly the bot keeps running on stale values: briefs fire at the
+  //    old hour, categories drift, and nothing else in the system notices.
+  try {
+    const drift = [];
+    for (const u of users) {
+      const who = u.preferred_name || u.name || u.chat_id;
+      try {
+        const remote = prefs.toMirror(await prefs.fetchRemote(cfg, u.chat_id));
+        const local = db.getUser(u.chat_id) || {};
+        const off = Object.keys(remote).filter(k => String(local[k] ?? '') !== String(remote[k]));
+        if (off.length) drift.push(`${who}: ${off.join(', ')}`);
+      } catch (e) { drift.push(`${who}: no se pudo comparar (${e.message})`); }
+    }
+    add(drift.length === 0, 'Preferencias — espejo sincronizado',
+        drift.length === 0 ? `${users.length} usuario(s) al día` : drift.join('; '));
+  } catch (e) {
+    add(false, 'Preferencias — espejo sincronizado', e.message);
+  }
+
+  // Retired 2026-09-10, both for measuring something that can no longer happen:
+  //
+  //   "missing due dates" — tasks.due_date_next_step is NOT NULL in Postgres and
+  //   holds zero nulls, so the check could never fire. The concern it encoded
+  //   (a task invisible to every date filter) is also gone: the redesigned
+  //   dashboard has a "Sin fecha" section.
+  //
+  //   "priority flags" — priority moved into tasks.is_priority on 2026-09-01 and
+  //   priorityMapFrom() replaced the file on every live path. The file it read
+  //   is a frozen snapshot from 2026-08-28; comparing it against live tasks
+  //   would alarm about flags nothing reads.
 
   const failed = results.filter(r => !r.ok);
   if (failed.length === 0) {
