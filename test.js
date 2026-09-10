@@ -40,6 +40,7 @@ const NAMES = [
   'PRESET_CATEGORIES', 'CITY_TZ_TABLE', 'TG_ALLOWED_TAGS',
   'parseCityToTimezone', 'parseCategorySelection', 'parseLanguageChoice',
   'parseBriefTimes', 'sanitizeName', 'toTelegramHtml', 'toPlainText', 'splitForTelegram',
+  'buildLanguageDirective',
 ];
 const src = NAMES.map(lift).join('\n');
 const M = new Function(`${src}\n return { ${NAMES.join(', ')} };`)();
@@ -131,6 +132,25 @@ is(M.splitForTelegram('corto'), ['corto'], 'split: short text is one chunk');
   is(chunks.join('\n'), long, 'split: rejoins losslessly');
   is(chunks.every(c => c.endsWith(')')), true, 'split: never cuts mid-line');
 }
+
+// ── language directive ───────────────────────────────────────────────────────
+// The setting has to override what the user happens to be typing, or Ajustes is
+// decorative: the prompt used to say "reply in the user's language" and followed
+// the last message instead of the preference.
+is(/Always reply in English/.test(M.buildLanguageDirective({ language: 'en' })), true,
+   'language: en forces English');
+is(/Responde siempre en español/.test(M.buildLanguageDirective({ language: 'es' })), true,
+   'language: es forces Spanish');
+is(M.buildLanguageDirective({ language: null }), "Reply in the user's language.",
+   'language: unset follows the user, which is right mid-onboarding');
+is(M.buildLanguageDirective({}), "Reply in the user's language.",
+   'language: missing field does not crash');
+is(M.buildLanguageDirective(null), "Reply in the user's language.",
+   'language: no user at all does not crash');
+// A placeholder that survives into the prompt would ship the literal token to
+// the model, which is exactly the kind of thing nobody notices for weeks.
+is(/__LANGUAGE__/.test(M.buildLanguageDirective({ language: 'en' })), false,
+   'language: directive carries no placeholder');
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

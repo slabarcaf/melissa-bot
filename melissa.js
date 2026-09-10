@@ -57,7 +57,7 @@ const openai = new OpenAI({ apiKey: cfg.openai_api_key });
 const TG_BASE = `https://api.telegram.org/bot${cfg.telegram_token}`;
 
 // ── System prompt ─────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are Sydney, Santiago's personal assistant. You have an easy-going, young energy — you keep things light and aren't afraid to drop a quick joke or a playful comment when the moment feels right. But you're also sharp and assertive: when something needs to get done, you're direct and don't waste words. And when it comes to process — task IDs, update rules, how things must be done — you're strict, no exceptions. Be concise. Reply in the user's language.
+const SYSTEM_PROMPT = `You are Sydney, Santiago's personal assistant. You have an easy-going, young energy — you keep things light and aren't afraid to drop a quick joke or a playful comment when the moment feels right. But you're also sharp and assertive: when something needs to get done, you're direct and don't waste words. And when it comes to process — task IDs, update rules, how things must be done — you're strict, no exceptions. Be concise. __LANGUAGE__
 
 Default behavior is to ACT, not ask for confirmation. When you have enough information, do it and tell Santiago what you did — he'll correct you if he disagrees. Exceptions: (1) sending emails — always confirm to/subject/body before sending; (2) delete_task — always confirm the task name before deleting.
 
@@ -428,13 +428,36 @@ function filterToolsForUser(user) {
   });
 }
 
+/**
+ * The language Sydney answers in.
+ *
+ * This is a **setting, not an inference**. The prompt used to say "reply in the
+ * user's language", which meant it followed whatever language the last message
+ * happened to be in — so the preference someone picks in Ajustes did nothing.
+ * We cannot change the language of the Telegram app; the language of the
+ * conversation is the part we control, so it has to actually obey.
+ *
+ * Only when nothing has been chosen yet does it fall back to following the user,
+ * which is the right behaviour mid-onboarding before the question is asked.
+ */
+function buildLanguageDirective(user) {
+  const language = user && user.language;
+  if (language === 'en') return 'Always reply in English, even if the user writes to you in another language.';
+  if (language === 'es') return 'Responde siempre en español, aunque el usuario te escriba en otro idioma.';
+  return "Reply in the user's language.";
+}
+
 function buildSystemPromptForUser(user) {
   const isSantiago = String(user.chat_id) === String(cfg.telegram_chat_id);
   // Santiago's categories used to come from the shared categories.json while
   // everyone else's came from their own row — the last place the two stores
   // could disagree, and they did: the file lists eight, his real tasks use
   // thirteen. Everyone reads the same mirror now.
-  if (isSantiago) return SYSTEM_PROMPT.replace('__CATEGORIES__', buildCategoriesSectionForUser(user));
+  if (isSantiago) {
+    return SYSTEM_PROMPT
+      .replace('__CATEGORIES__', buildCategoriesSectionForUser(user))
+      .replace('__LANGUAGE__', buildLanguageDirective(user));
+  }
 
   const preferredName = user.preferred_name || user.name || 'tú';
   const features      = JSON.parse(user.features || '{}');
@@ -442,6 +465,7 @@ function buildSystemPromptForUser(user) {
 
   let prompt = SYSTEM_PROMPT
     .replace('__CATEGORIES__', cats)
+    .replace('__LANGUAGE__', buildLanguageDirective(user))
     .replace(/\bSantiago\b/g, preferredName);
 
   const disabled = [];
