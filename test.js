@@ -40,7 +40,7 @@ const NAMES = [
   'PRESET_CATEGORIES', 'CITY_TZ_TABLE', 'TG_ALLOWED_TAGS',
   'parseCityToTimezone', 'parseCategorySelection', 'parseLanguageChoice',
   'parseBriefTimes', 'sanitizeName', 'toTelegramHtml', 'toPlainText', 'splitForTelegram',
-  'buildLanguageDirective',
+  'buildLanguageDirective', 'VOICE_VOCAB', 'buildVoicePrompt',
 ];
 const src = NAMES.map(lift).join('\n');
 const M = new Function(`${src}\n return { ${NAMES.join(', ')} };`)();
@@ -151,6 +151,29 @@ is(M.buildLanguageDirective(null), "Reply in the user's language.",
 // the model, which is exactly the kind of thing nobody notices for weeks.
 is(/__LANGUAGE__/.test(M.buildLanguageDirective({ language: 'en' })), false,
    'language: directive carries no placeholder');
+
+// ── prompt de voz ────────────────────────────────────────────────────────────
+// El prompt existe por una razón medible: sin él, "con vencimiento mañana" sale
+// como "Convencimiento mañana". Y las categorías del usuario son la mitad que
+// hace que "Ayudantias" se escriba bien para quien las usa.
+is(/con vencimiento/.test(M.buildVoicePrompt({ language: 'es' })), true,
+   'voz: el vocabulario genérico va siempre');
+is(/Categorías: Ayudantias, Mudanza/.test(
+     M.buildVoicePrompt({ language: 'es', categories: '[{"name":"Ayudantias"},{"name":"Mudanza"}]' })), true,
+   'voz: agrega las categorías de esa persona');
+is(/due tomorrow/.test(M.buildVoicePrompt({ language: 'en' })), true,
+   'voz: en inglés usa el vocabulario en inglés');
+is(/Categor/.test(M.buildVoicePrompt({ language: 'es', categories: 'no es json' })), false,
+   'voz: categorías corruptas no rompen el prompt');
+is(/Categor/.test(M.buildVoicePrompt(null)), false, 'voz: sin usuario no revienta');
+{
+  // Solo la cola de categorías: el vocabulario base ya trae sus propias comas.
+  const prompt = M.buildVoicePrompt({ language: 'es', categories: JSON.stringify(
+    Array.from({ length: 40 }, (_, i) => ({ name: 'C' + i })))});
+  const cats = prompt.split('Categorías: ')[1].replace(/\.$/, '').split(', ');
+  is(cats.length, 20, 'voz: 40 categorías se recortan a 20 para que siga siendo una pista');
+  is(cats.includes('C39'), false, 'voz: las que sobran quedan fuera');
+}
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

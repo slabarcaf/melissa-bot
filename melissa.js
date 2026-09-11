@@ -1659,23 +1659,41 @@ async function downloadFile(url, destPath, timeoutMs = 30000) {
 // Domain vocabulary for Whisper. Without it, Spanish audio reliably joins "con
 // vencimiento" (= "due on") into "Convencimiento".
 //
-// Currently UNUSED. It was briefly wired into transcribeVoice on 2026-08-25 and
-// reverted the same night, when the bot stopped answering voice notes minutes after
-// the deploy. That revert was a false alarm: the prompt param was later measured
-// against the real API from this VM (3/3 calls under 2s, correct transcription), and
-// a local-listener test showed the accented field encodes fine. The actual stall was
-// in the Telegram legs of the voice path (getFile returned 504 Gateway Timeout), and
-// neither tgRequest nor downloadFile has a timeout, so a stalled Telegram request
-// wedges that chat's FIFO queue indefinitely. Safe to re-enable once those have
-// timeouts; see [voice] handling in the polling loop.
-// eslint-disable-next-line no-unused-vars
-const VOICE_PROMPT_ES =
-  'Notas sobre tareas, agenda y recordatorios. Vocabulario frecuente: con vencimiento ' +
-  'mañana, con vencimiento el viernes, fecha de vencimiento, próximo paso, prioridad, ' +
-  'pendientes, Ayudantías, bicursos, quizzes, Personal Finance, Berkeley, Whistler, ' +
-  'profesor Robb, networking, follow-up, deuda, calendario.';
+// Re-enabled 2026-09-11, and rewritten while at it.
+//
+// It was wired in on 2026-08-25 and reverted the same night when the bot stopped
+// answering voice notes. That revert was a false alarm: the stall was in the
+// Telegram legs of the voice path (getFile returning 504 with no timeout on
+// either tgRequest or downloadFile), which have had timeouts since 2026-09-01.
+// The prompt itself was measured against the real API from this VM — 3/3 calls
+// under 2s, correct transcription.
+//
+// The old version listed Santiago's own proper nouns, which helped exactly one
+// user and would have put a stranger's words in everybody else's mouth. What is
+// generic stays generic, and the personal half now comes from *that person's*
+// categories — the same rule the web uses in src/lib/voicePrompt.ts, so a voice
+// note is transcribed the same way on both sides.
+const VOICE_VOCAB = {
+  es: 'Notas sobre tareas, agenda y recordatorios. Vocabulario frecuente: con vencimiento ' +
+      'mañana, con vencimiento el viernes, fecha de vencimiento, próximo paso, prioridad, ' +
+      'pendientes, tarea, recordatorio, deuda, me deben, debo yo, calendario, la próxima semana.',
+  en: 'Notes about tasks, schedule and reminders. Frequent vocabulary: due tomorrow, due on ' +
+      'Friday, due date, next step, priority, pending, task, reminder, debt, they owe me, ' +
+      'I owe, calendar, next week.',
+};
 
-async function transcribeVoice(fileId, language) {
+function buildVoicePrompt(user) {
+  const language = user && user.language === 'en' ? 'en' : 'es';
+  const base = VOICE_VOCAB[language];
+  let cats = [];
+  try { cats = JSON.parse((user && user.categories) || '[]'); } catch { cats = []; }
+  const names = cats.map(c => c && c.name).filter(Boolean).slice(0, 20);
+  if (names.length === 0) return base;
+  return `${base} ${language === 'en' ? 'Categories' : 'Categorías'}: ${names.join(', ')}.`;
+}
+
+async function transcribeVoice(fileId, user) {
+  const language = user && user.language;
   // Step 1: get file path from Telegram
   const fileInfo = await tgRequest('getFile', { file_id: fileId });
   if (!fileInfo.ok) throw new Error('getFile failed: ' + JSON.stringify(fileInfo));
@@ -1694,6 +1712,7 @@ async function transcribeVoice(fileId, language) {
     const transcription = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpPath),
       model: 'whisper-1',
+      prompt: buildVoicePrompt(user),
       // No language hint → Whisper autodetects (users who haven't picked one yet).
       ...(language ? { language } : {}),
     }, { signal: ac.signal });
@@ -1730,7 +1749,7 @@ async function poll() {
         try {
           console.log(`[voice] transcribing from ${fromName}...`);
           const vUser = db.getUser(chatId);
-          text = await transcribeVoice(voiceFileId, vUser ? vUser.language : null);
+          text = await transcribeVoice(voiceFileId, vUser);
           console.log(`[voice→text] ${text.slice(0, 100)}`);
         } catch (err) {
           console.error('[voice error]', err.message);
