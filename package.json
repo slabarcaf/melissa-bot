@@ -1,7 +1,7 @@
 {
   "name": "melissa-bot",
   "version": "1.0.0",
-  "description": "Melissa \u2014 personal AI assistant on Telegram powered by OpenAI GPT-4",
+  "description": "Melissa — personal AI assistant on Telegram, powered by gpt-5-mini",
   "main": "melissa.js",
   "scripts": {
     "start": "node melissa.js",
@@ -12,5 +12,8 @@
   "dependencies": {
     "node-cron": "^4.2.1",
     "openai": "^6.37.0"
+  },
+  "overrides": {
+    "ws": "^8.20.2"
   }
 }
