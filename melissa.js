@@ -849,7 +849,15 @@ let taskServer, calendarServer, sheetsServer;
 const taskPending = {}, calPending = {}, sheetsPending = {};
 
 function startMCPServer(scriptPath, env, pendingMap, role) {
-  const proc = spawn('node', [scriptPath], { env: { ...process.env, ...env }, stdio: ['pipe','pipe','pipe'] });
+  // Env mínima: cada hijo MCP recibía TODO el entorno del padre encima de sus
+  // propios secretos, así que el servidor de Sheets podía leer el token del bot
+  // de Telegram y el de calendario, la llave de OpenAI y la de la API de tareas.
+  // Ninguno necesita nada de eso. `spawn` con arreglo de argumentos y sin
+  // `shell: true` ya estaba bien; esto solo cierra la otra mitad.
+  const proc = spawn('node', [scriptPath], {
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: process.env.NODE_ENV, ...env },
+    stdio: ['pipe','pipe','pipe']
+  });
   const rl = readline.createInterface({ input: proc.stdout });
   rl.on('line', line => {
     try {
@@ -1181,6 +1189,56 @@ function chatCreate(messages, tools) {
   return openai.chat.completions.create(req);
 }
 
+// ── Attendee-exfiltration guard ───────────────────────────────────────────────
+// Untrusted text reaches the model: scan_gmail_for_actions puts whole email
+// bodies into the context, and anyone can email Santiago. `update_calendar_event`
+// takes `add_attendees`, so a message that talks the model into adding an address
+// makes Google mail that stranger the contents of a private event. That is an
+// exfiltration primitive, and the only thing standing in front of it was a
+// sentence in the system prompt — in a codebase where prompt-only rules have
+// failed three times.
+//
+// So the rule is checked in code, and it is not "did the model confirm": the
+// model can claim a confirmation it never got. An address may be invited only if
+// it came from a source the *person* controls — something they wrote themselves,
+// or the result of a lookup_google_contact they asked for. An address that only
+// ever appeared inside an email body is refused, which is exactly the case an
+// injection needs and no honest flow does.
+const ATTENDEE_FIELDS = { add_calendar_event: 'attendees', update_calendar_event: 'add_attendees' };
+
+function vouchedAttendeeText(messages) {
+  const lookupIds = new Set();
+  for (const m of messages || []) {
+    if (m?.role === 'assistant' && Array.isArray(m.tool_calls)) {
+      for (const tc of m.tool_calls) {
+        if (tc?.function?.name === 'lookup_google_contact' && tc.id) lookupIds.add(tc.id);
+      }
+    }
+  }
+  let text = '';
+  for (const m of messages || []) {
+    if (m?.role === 'user' && typeof m.content === 'string') text += '\n' + m.content;
+    else if (m?.role === 'tool' && lookupIds.has(m.tool_call_id) && typeof m.content === 'string') {
+      text += '\n' + m.content;
+    }
+  }
+  return text.toLowerCase();
+}
+
+/** The addresses this call wants to invite that nothing the user did vouches for. */
+function unvouchedAttendees(name, args, messages) {
+  const field = ATTENDEE_FIELDS[name];
+  if (!field) return [];
+  const requested = Array.isArray(args?.[field]) ? args[field] : [];
+  if (requested.length === 0) return [];
+  const vouched = vouchedAttendeeText(messages);
+  return requested
+    .map(value => String(value || '').trim())
+    .filter(value => value && !vouched.includes(value.toLowerCase()));
+}
+
+const ATTENDEE_NOT_VOUCHED = '(BLOQUEADO: no agregué a nadie al evento. Solo puedo invitar direcciones que el usuario haya escrito él mismo o que hayan salido de lookup_google_contact en esta conversación. Dile al usuario exactamente qué dirección quieres agregar y de dónde la sacaste, y pídele que la escriba para confirmarla. NO vuelvas a llamar esta herramienta con la misma dirección hasta que él la escriba.)';
+
 // ── Mutation-claim guard ──────────────────────────────────────────────────────
 // Smaller models sometimes NARRATE a completed action ("marqué la tarea como
 // hecha") without ever emitting the tool call, so nothing is actually written.
@@ -1330,10 +1388,17 @@ REGLAS DE AÑO:
       while (msg.tool_calls?.length && Date.now() < deadline) {
         const results = await Promise.all(msg.tool_calls.map(async tc => {
           const args = JSON.parse(tc.function.arguments || '{}');
-          console.log(`[tool] ${tc.function.name}`, JSON.stringify(args).slice(0,80));
+          console.log(`[tool] ${tc.function.name}`);
+          // Se comprueba aquí y no en callTool porque la prueba necesita la
+          // conversación entera, que es lo que dice de dónde salió la dirección.
+          const unvouched = unvouchedAttendees(tc.function.name, args, messages);
+          if (unvouched.length) {
+            console.warn(`[guard] invitado sin respaldo del usuario, bloqueado (chat ${chatId})`);
+            return { tool_call_id:tc.id, role:'tool', content:ATTENDEE_NOT_VOUCHED };
+          }
           const result = await callTool(tc.function.name, args, chatId);
           const failed = toolFailed(result);
-          console.log(`[tool:done] ${tc.function.name} ${failed ? 'FAILED' : 'ok'}`, String(result).slice(0,120));
+          console.log(`[tool:done] ${tc.function.name} ${failed ? 'FAILED' : 'ok'}`);
           if (!failed && MUTATING_TOOLS.has(tc.function.name)) ranMutation = true;
           if (!failed && marksTaskDone(tc.function.name, args)) markedDone = true;
           return { tool_call_id:tc.id, role:'tool', content:result };
@@ -1378,7 +1443,7 @@ REGLAS DE AÑO:
 
     history.push({ role:'assistant', content:reply });
     await sendMessage(chatId, reply);
-    console.log(`[reply → ${chatId}]`, reply.slice(0, 100));
+    console.log(`[reply → ${chatId}] ${reply.length} caracteres`);
     if (markedDone) await maybeCelebrate(chatId, user);
   } catch (err) {
     console.error('[handleMessage error]', err.message);
@@ -1701,7 +1766,12 @@ async function transcribeVoice(fileId, user) {
   const fileUrl = `https://api.telegram.org/file/bot${cfg.telegram_token}/${filePath}`;
 
   // Step 2: download to temp file
-  const tmpPath = path.join(os.tmpdir(), `voice_${Date.now()}.ogg`);
+  // Un nombre adivinable en un directorio compartido: en esta VM de un solo
+  // inquilino el riesgo es casi nulo, pero `voice_<timestamp>.ogg` lo puede
+  // anticipar cualquiera que sepa la hora. Un directorio propio con permisos
+  // 0700 cuesta una línea y deja de depender de que la VM siga siendo de uno.
+  const tmpDir  = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'melissa-voz-'));
+  const tmpPath = path.join(tmpDir, 'nota.ogg');
   await downloadFile(fileUrl, tmpPath);
 
   // Step 3: transcribe with Whisper. The SDK has no per-call deadline of its own,
@@ -1719,7 +1789,7 @@ async function transcribeVoice(fileId, user) {
     return transcription.text;
   } finally {
     clearTimeout(killer);
-    fs.unlink(tmpPath, () => {});
+    fs.rm(tmpDir, { recursive: true, force: true }, () => {});
   }
 }
 
@@ -1750,7 +1820,7 @@ async function poll() {
           console.log(`[voice] transcribing from ${fromName}...`);
           const vUser = db.getUser(chatId);
           text = await transcribeVoice(voiceFileId, vUser);
-          console.log(`[voice→text] ${text.slice(0, 100)}`);
+          console.log(`[voice→text] ${text.length} caracteres transcritos`);
         } catch (err) {
           console.error('[voice error]', err.message);
           await sendMessage(chatId, '❌ No pude transcribir el audio. Intenta de nuevo.');
@@ -1761,7 +1831,7 @@ async function poll() {
       if (!text?.trim()) continue;
 
       // ── Admin: /invite command (Santiago only) ────────────────────────────
-      if (chatId === cfg.telegram_chat_id && text.startsWith('/invite ')) {
+      if (String(chatId) === String(cfg.telegram_chat_id) && text.startsWith('/invite ')) {
         const parts = text.slice(8).trim().split(/\s+/);
         const label = parts[0];
         const email = parts[1] && parts[1].includes('@') ? parts[1] : null;
@@ -1782,7 +1852,7 @@ async function poll() {
       }
 
       // ── Admin: user management commands (Santiago only) ───────────────────
-      if (chatId === cfg.telegram_chat_id && /^\/(users|resetuser|deleteuser)\b/.test(text)) {
+      if (String(chatId) === String(cfg.telegram_chat_id) && /^\/(users|resetuser|deleteuser)\b/.test(text)) {
         await handleAdminCommand(chatId, text).catch(err => console.error('[admin]', err.message));
         continue;
       }
@@ -1833,11 +1903,11 @@ async function poll() {
           const existing = db.getUser(chatId);
           if (!existing) {
             db.createUser(chatId, { name: data.user.name || 'Amigo', features: { tasks: true, finanzas: true } });
-            console.log(`[link] ${fromName} (${chatId}) → ${data.user.email}`);
+            console.log(`[link] ${fromName} (${chatId}) vinculado`);
             await sendMessage(chatId, `✅ Listo, quedaste conectado como *${data.user.name || data.user.email}*.\n\nTus tareas son las mismas aquí y en el dashboard. Ahora unas preguntas rápidas para dejarte configurado 👇`);
             await handleOnboarding(chatId, db.getUser(chatId), '');
           } else {
-            console.log(`[link] ${fromName} (${chatId}) re-linked → ${data.user.email}`);
+            console.log(`[link] ${fromName} (${chatId}) re-vinculado`);
             await sendMessage(chatId, `✅ Conectado como *${data.user.name || data.user.email}*. Tus tareas son las mismas aquí y en el dashboard.`);
           }
         } catch (err) {
@@ -1856,7 +1926,7 @@ async function poll() {
         if (code && label !== null) {
           // New users get Tasks + Finanzas only (email/calendar/networking stay Santiago-only)
           db.createUser(chatId, { name: label, features: { tasks: true, finanzas: true } });
-          console.log(`[invite] ${fromName} (${chatId}) claimed code ${code} for "${label}"`);
+          console.log(`[invite] ${fromName} (${chatId}) canjeó un código para "${label}"`);
           await handleOnboarding(chatId, db.getUser(chatId), '');
         } else if (code) {
           recordInviteFail(chatId); // F3
@@ -1878,7 +1948,7 @@ async function poll() {
       if (processing.has(key)) continue;
       processing.add(key);
 
-      console.log(`[in] ${fromName}: ${text.slice(0, 100)}`);
+      console.log(`[in] ${fromName}: ${text.length} caracteres`);
       const _prev = chatQueues.get(chatId) || Promise.resolve();
       const _curr = _prev.then(
         () => handleMessage(chatId, text).catch(() => {}),

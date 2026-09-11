@@ -80,9 +80,25 @@ function createUser(chatId, data = {}) {
   );
 }
 
+// Los VALORES de este UPDATE van parametrizados, pero los NOMBRES DE COLUMNA se
+// interpolan, y eso no se puede parametrizar en SQL. Hoy todos los llamadores
+// pasan literales escritos a mano, así que no es explotable — y por eso mismo se
+// ve seguro. Un solo `updateUser(chatId, req.body)` en el futuro lo convierte en
+// inyección. La lista blanca hace que ese futuro falle ruidosamente en vez de
+// silenciosamente.
+const UPDATABLE_USER_COLUMNS = new Set([
+  'name', 'preferred_name', 'onboarding', 'timezone', 'features',
+  'task_user_tag', 'categories', 'language', 'brief_morning', 'brief_evening'
+]);
+
 function updateUser(chatId, updates) {
-  const fields = Object.keys(updates).map(k => `${k} = ?`).join(', ');
-  const values = Object.values(updates).map(v =>
+  const keys = Object.keys(updates);
+  const rejected = keys.filter(k => !UPDATABLE_USER_COLUMNS.has(k));
+  if (rejected.length) throw new Error(`updateUser: columna no permitida: ${rejected.join(', ')}`);
+  if (!keys.length) return;
+
+  const fields = keys.map(k => `${k} = ?`).join(', ');
+  const values = keys.map(k => updates[k]).map(v =>
     (v !== null && typeof v === 'object') ? JSON.stringify(v) : v
   );
   getDb().prepare(`UPDATE users SET ${fields} WHERE chat_id = ?`).run(...values, chatId);

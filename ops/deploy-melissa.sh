@@ -21,16 +21,22 @@ cp -f melissa.js    "$DEST/whatsapp-bot.js"
 cp -f db.js         "$DEST/db.js"
 cp -f prefs.js      "$DEST/prefs.js"
 cp -f package.json  "$DEST/package.json"
+cp -f package-lock.json "$DEST/package-lock.json"
 cp -f sheets-mcp.js "$SKILLS/sheets-mcp.js"
 
 # Every require() in whatsapp-bot.js must land here, or the service restarts
 # into a MODULE_NOT_FOUND loop. Fail the deploy before touching systemd instead.
-for f in whatsapp-bot.js db.js prefs.js package.json; do
+for f in whatsapp-bot.js db.js prefs.js package.json package-lock.json; do
   [ -f "$DEST/$f" ] || { echo "MISSING $DEST/$f — aborting before restart"; exit 1; }
 done
 
 cd "$DEST"
-npm install --omit=dev
+# `npm ci` respeta el lockfile exactamente; sin lockfile, cada despliegue resolvía
+# a lo que hubiera publicado ese día y nadie lo había revisado. El `||` está para
+# que un lockfile desincronizado no deje al servicio sin node_modules: en ese caso
+# se instala como antes y el despliegue sigue, que es mejor que caerse aquí con el
+# proceso viejo ya detenido.
+npm ci --omit=dev || npm install --omit=dev
 # hardened ownership + secret perms
 chown -R melissa:melissa "$DEST" "$SKILLS"
 chmod 600 "$DEST/config.json" "$DEST/melissa.db" 2>/dev/null || true

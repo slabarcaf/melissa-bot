@@ -1,7 +1,7 @@
 {
   "name": "melissa-bot",
   "version": "1.0.0",
-  "description": "Melissa — personal AI assistant on Telegram powered by OpenAI GPT-4",
+  "description": "Melissa \u2014 personal AI assistant on Telegram powered by OpenAI GPT-4",
   "main": "melissa.js",
   "scripts": {
     "start": "node melissa.js",
@@ -10,12 +10,7 @@
   "author": "Santiago Labarca",
   "license": "MIT",
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^5.2.1",
-    "form-data": "^4.0.5",
     "node-cron": "^4.2.1",
-    "node-fetch": "^2.7.0",
-    "openai": "^6.37.0",
-    "pino": "^10.3.1"
+    "openai": "^6.37.0"
   }
 }
