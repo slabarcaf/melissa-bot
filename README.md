@@ -15,40 +15,45 @@ Melissa (deployed as "Sydney") is a multi-user AI assistant that lives in Telegr
 
 ### Which account owns what
 
-The rule is short: **GitHub and Vercel are `slabarcaf`; Google Cloud and Neon are the Berkeley
-Google account.** Worth knowing up front, because signing in to one of them is not enough to work on
-this project.
+Two Google identities are in play — **Berkeley** (`santiago.labarca@berkeley.edu`) and **personal**
+(`slabarcaf@gmail.com`) — plus GitHub as `slabarcaf`. Signing in to one is not enough to work on this
+project, and guessing wrong is expensive: on 2026-09-11 two API keys were added to a Vercel project
+that turned out to be an unrelated old React app in the other account, and three redeploys later
+production still could not see them.
 
-| Service | Account | Holds |
-|---|---|---|
-| **GitHub** | `slabarcaf` | Both repos: `melissa-bot` and `task-dashboard` |
-| **Vercel** | `slabarcaf` | The task-dashboard deployment, `task-dashboard-c7q2.vercel.app` |
-| **Google Cloud** | Berkeley (`santiago.labarca@berkeley.edu`) | OAuth clients — project number `<gcp-project-number>` |
-| Oracle Cloud | — | The VM, reached as `opc@$VM_HOST` with `~/.ssh/id_ed25519` |
-| **Neon** | Berkeley | The Postgres database behind the task API — `us-east-1`, host `<neon-host>…aws.neon.tech`. Shared by every Vercel project that has ever pointed at it |
+Every row says **how to check**, because a table that only asserts goes stale the first time
+something moves, and the next person believes it.
+
+| Service | Account | Holds | How to check you are in the right place |
+|---|---|---|---|
+| **GitHub** | personal — `slabarcaf` | Both repos: `melissa-bot` and `task-dashboard` | `git remote -v` in either repo shows `slabarcaf/…` |
+| **Vercel** | **Berkeley** | The live dashboard, `task-dashboard-c7q2.vercel.app` | The project's **Deployments** tab shows today's commits from `slabarcaf/task-dashboard`. If it shows an old React app or no recent commits, wrong project |
+| **Google Cloud** | Berkeley | OAuth clients — project number `<gcp-project-number>` | The client id starts `<gcp-project-number>-…` |
+| **Neon** | Berkeley | The Postgres behind the task API — `us-east-1`, host `<neon-host>…aws.neon.tech` | `DATABASE_URL` in Vercel points at that host |
+| **OpenAI** | — | `OPENAI_API_KEY` in Vercel (web voice notes) and `openai_api_key` in the VM's `config.json` (the bot) | `/admin` shows **Integraciones → Notas de voz** in green |
+| **Resend** | — | `RESEND_API_KEY` in Vercel (invitation email) | `/admin` shows **Integraciones → Invitaciones por correo** in green |
+| **Oracle Cloud** | — | The VM, `opc@$VM_HOST` with `~/.ssh/id_ed25519` | `ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST 'sudo systemctl is-active melissa-bot'` |
+| **Telegram** | — | @Melizion_bot, created in BotFather | The token in `config.json` answers `getMe` |
+
+> ⚠️ **Corrected 2026-09-11.** This table used to say Vercel was `slabarcaf`. It is the Berkeley
+> account. The personal account holds a *different*, unrelated project that is also called
+> `task-dashboard` — an old create-react-app still serving at `task-dashboard.vercel.app`. Two
+> projects, near-identical names, different accounts: that is the trap, and the reason the
+> "how to check" column exists.
 
 Consequences worth knowing before you touch anything:
 
-- **Vercel and GitHub are the same identity (`slabarcaf`)**, so the deploy link is straightforward:
-  a push to `main` on `slabarcaf/task-dashboard` is what Vercel builds. The split that does matter is
-  Google: the OAuth clients live under the Berkeley account, so adding a new deployment URL to the
-  sign-in client means switching identities to do it.
-- The `gh` CLI on Santiago's Mac is authenticated **only as `slabarcaf`**. An older
-  `task-dashboard` repo still exists under a separate `santiagolabarca` GitHub account and is kept
-  as `old-origin-santiagolabarca`; it is history, not the source of truth.
-- Google Cloud project `<gcp-project-number>` holds **two** OAuth clients that must not be confused:
-  - Web client `…-p82fvab9n0fkdou4nevr0na7k8q9jbs3` — the dashboard's Google Sign-In. Adding a
-    Vercel URL to its *Authorized JavaScript origins* is required for login to work on a new
-    deployment, and is safe.
-  - Desktop client `…-lo4mtacmbhh7taph181efi5ol62qgvc4` — the **bot's** Gmail/Calendar/Sheets
-    access. Editing or regenerating it breaks Sydney's Google access and forces re-minting the
-    refresh token by hand. Do not touch it.
+- **Hosting, database and sign-in all sit on a university account.** Vercel, Neon and the Google
+  OAuth client are all Berkeley. If that account is ever deactivated, the product loses its host, its
+  data and its login in one move. Nothing is on fire today, but moving them to the personal account is
+  the kind of work that is cheap now and impossible later. Do it one service at a time, never in the
+  same session as a feature.
+- **Vercel and GitHub are different identities**, so a push to `main` on `slabarcaf/task-dashboard`
+  builds in a Vercel account reached with a different login. Adding an environment variable means
+  signing in as Berkeley, not as `slabarcaf`.
+- **The commit email must belong to the GitHub account** or Vercel refuses the build as `Blocked`.
+  See the deployment note in `task-dashboard/README.md`.
 
-Companion docs: `ONBOARDING.md` (how a new user is created), `MODULES.md` (what each module does and
-who may use it), `CLAUDE.md` (invariants), newest `HANDOFF-*.md` (current state), newest `PLAN-*.md`
-(roadmap).
-
----
 
 ## Features
 
