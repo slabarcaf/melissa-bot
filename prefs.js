@@ -168,3 +168,89 @@ function startBackgroundSync(cfg, onChange) {
 }
 
 module.exports = { fetchRemote, pull, push, pullAll, startBackgroundSync, toMirror, fromMirror };
+
+/* ─── Deudas ───────────────────────────────────────────────────────────────
+   Igual que las preferencias: Postgres es la fuente. A diferencia de ellas NO
+   hay espejo local, y es a propósito — las deudas solo se leen cuando alguien
+   las pide en una conversación, que ya es un camino asíncrono. Un espejo sin
+   lector síncrono es solo otra copia que se puede desincronizar. */
+
+async function debtsApi(cfg, chatId, method, path = '', body) {
+  const base = (cfg && cfg.task_api_base) || '';
+  const secret = (cfg && cfg.task_api_secret) || '';
+  if (!base || !secret) throw new Error('task_api_base/task_api_secret not configured');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base}/api/debts${path}`, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${secret}`,
+        'X-Telegram-Chat-Id': String(chatId),
+        'Content-Type': 'application/json'
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      try { message = JSON.parse(text).error || message; } catch {}
+      throw new Error(message);
+    }
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const fmtMoney = (amount, currency) =>
+  `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${currency}`;
+
+async function addDebt(cfg, chatId, { name, reason = '', amount, currency = 'USD', direction }) {
+  if (!name || amount == null) return 'Falta el nombre o el monto.';
+  const { debt } = await debtsApi(cfg, chatId, 'POST', '', {
+    name, reason, amount: Number(amount), currency, direction
+  });
+  const verbo = debt.direction === 'Debo yo' ? 'Le debes' : 'Te debe';
+  return `✅ Registrado en Finanzas: ${verbo} ${fmtMoney(debt.amount, debt.currency)} — ${debt.name}` +
+         `${debt.reason ? ' (' + debt.reason + ')' : ''}. Estado: ${debt.status}.`;
+}
+
+async function listDebts(cfg, chatId, filter = 'pending') {
+  const { debts } = await debtsApi(cfg, chatId, 'GET');
+  const keep = {
+    all:      () => true,
+    paid:     d => d.status === 'Pagado',
+    pending:  d => d.status !== 'Pagado',
+    me_deben: d => d.direction === 'Me deben' && d.status !== 'Pagado',
+    debo_yo:  d => d.direction === 'Debo yo'  && d.status !== 'Pagado',
+  }[filter] || (d => d.status !== 'Pagado');
+
+  const rows = debts.filter(keep);
+  if (rows.length === 0) return `Sin deudas (${filter}).`;
+  return `💰 Deudas (${filter}):\n` + rows.map(d =>
+    `- ${d.name} — ${fmtMoney(d.amount, d.currency)} — ${d.direction}` +
+    `${d.reason ? ' — ' + d.reason : ''} — ${d.status} [#${d.id}]`
+  ).join('\n');
+}
+
+async function updateDebt(cfg, chatId, id, status) {
+  if (!id) return 'Falta el id de la deuda [#].';
+  const wantsPaid = String(status || '').toLowerCase().includes('pag');
+  try {
+    const { debt } = await debtsApi(cfg, chatId, 'PATCH', `/${id}`, {
+      status: wantsPaid ? 'Pagado' : 'Por pagar'
+    });
+    const when = debt.statusChangedAt ? ` (${debt.statusChangedAt.slice(0, 10)})` : '';
+    return `✅ Deuda [#${id}] → ${debt.status}${when}.`;
+  } catch (err) {
+    if (/No existe/i.test(err.message)) return `No se encontró la deuda [#${id}].`;
+    throw err;
+  }
+}
+
+module.exports.addDebt = addDebt;
+module.exports.listDebts = listDebts;
+module.exports.updateDebt = updateDebt;

@@ -1031,9 +1031,21 @@ async function callTool(name, args, chatId) {
     }
 
     // ── Finance: SQLite per-user (replaces sheets-mcp finance tools) ──────────
-    if (name === 'add_debt')           return db.addDebt(chatId, args);
-    if (name === 'list_debts')         return db.listDebts(chatId, args.filter);
-    if (name === 'update_debt_status') return db.updateDebt(chatId, args.row, args.status);
+    // Las deudas viven en Postgres desde 2026-09-10, igual que las
+    // preferencias — antes solo estaban en la SQLite de esta VM y la web no
+    // podía mostrarlas. Si la API no responde se lo decimos en vez de contestar
+    // con una lista vieja: una deuda que ya se pagó y sigue apareciendo hace
+    // que alguien cobre dos veces.
+    if (name === 'add_debt' || name === 'list_debts' || name === 'update_debt_status') {
+      try {
+        if (name === 'add_debt')   return await prefs.addDebt(cfg, chatId, args);
+        if (name === 'list_debts') return await prefs.listDebts(cfg, chatId, args.filter);
+        return await prefs.updateDebt(cfg, chatId, args.row, args.status);
+      } catch (err) {
+        console.log(`[debts] ${name} falló para ${chatId}: ${err.message}`);
+        return 'No pude llegar a tus finanzas ahora mismo. Inténtalo en un momento.';
+      }
+    }
 
     // ── Timezone: per-user row (+ global cfg when Santiago), reschedules briefs ─
     if (name === 'update_timezone') {
