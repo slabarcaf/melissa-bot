@@ -1453,12 +1453,18 @@ async function runHealthCheck() {
   const results = [];
   const add = (ok, name, detail) => results.push({ ok, name, detail });
 
-  const taskApi = (chatId) => fetch(`${cfg.task_api_base}/api/tasks`, {
+  const authedGet = (path, chatId) => fetch(`${cfg.task_api_base}${path}`, {
     headers: {
       Authorization: `Bearer ${cfg.task_api_secret}`,
       'X-Telegram-Chat-Id': String(chatId)
     }
   });
+  const taskApi = (chatId) => authedGet('/api/tasks', chatId);
+  const debtsApi = async (chatId) => {
+    const r = await authedGet('/api/debts', chatId);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
 
   // 1. Telegram API
   try {
@@ -1566,6 +1572,41 @@ async function runHealthCheck() {
         drift.length === 0 ? `${users.length} usuario(s) al día` : drift.join('; '));
   } catch (e) {
     add(false, 'Preferencias — espejo sincronizado', e.message);
+  }
+
+  // 8. Deudas — llegaron a Postgres el 2026-09-10 y el chequeo no las miraba.
+  //    Se comprueba que la API responda por usuario y que lo que devuelve tenga
+  //    sentido: una deuda con dirección o estado que nadie reconoce no aparece
+  //    en ningún filtro, igual que una tarea con estado inválido, y un monto que
+  //    no es número es una cobranza esperando a pasar.
+  //    ⚠️ La corrupción se detecta con la bandera `suspect` que manda la API, y
+  //    NO comparando `direction` o `status` contra una lista aquí. Esa primera
+  //    versión no podía funcionar: la API normaliza esos campos al leerlos, así
+  //    que un "Quizás" guardado en Postgres llegaba aquí convertido en "Me
+  //    deben" y el chequeo decía OK. Medido, no supuesto. Un chequeo que lee a
+  //    través de una capa que repara justo lo que busca siempre pasa.
+  try {
+    const problems = [];
+    let checked = 0;
+    for (const u of users) {
+      const who = u.preferred_name || u.name || u.chat_id;
+      try {
+        const { debts } = await debtsApi(u.chat_id);
+        checked++;
+        for (const d of debts || []) {
+          if (d.suspect) {
+            problems.push(
+              `#${d.id} guardada como dirección "${d.suspect.direction}", estado ` +
+              `"${d.suspect.status}", monto ${d.suspect.amount}`
+            );
+          }
+        }
+      } catch (e) { problems.push(`${who}: ${e.message}`); }
+    }
+    const ok = problems.length === 0 && checked === users.length;
+    add(ok, 'Deudas', ok ? `${checked} usuario(s) OK` : problems.slice(0, 5).join('; '));
+  } catch (e) {
+    add(false, 'Deudas', e.message);
   }
 
   // Retired 2026-09-10, both for measuring something that can no longer happen:
