@@ -1897,15 +1897,48 @@ async function poll() {
             continue;
           }
 
-          // The web half is linked. Now give them a bot-side record so the chat
-          // is authorized, and run the normal onboarding to collect the things
-          // only the bot needs: language, timezone and brief times.
+          // La mitad web ya está vinculada. Se le da una fila al bot para que el
+          // chat quede autorizado — y **no** se corre el onboarding del bot.
+          //
+          // Lo corría, y preguntaba idioma, zona horaria y horarios de resumen:
+          // exactamente lo que la web acaba de preguntar. Quien se conectaba
+          // desde el dashboard contestaba dos veces lo mismo, y la segunda
+          // sobrescribía a la primera. Desde que las preferencias viven en
+          // Postgres, la web es el onboarding y esto solo tiene que traérselas.
           const existing = db.getUser(chatId);
           if (!existing) {
             db.createUser(chatId, { name: data.user.name || 'Amigo', features: { tasks: true, finanzas: true } });
+
+            // Traer lo que la persona ya contestó en la web. Si falla, quedan los
+            // valores por omisión y el sync de fondo lo corrige: llegar con la
+            // zona horaria equivocada es recuperable, preguntar de nuevo no.
+            try {
+              await prefs.pull(cfg, chatId);
+            } catch (err) {
+              console.warn(`[link] no pude traer preferencias de ${chatId}: ${err.message}`);
+            }
+
+            // Sin esto el chat queda atascado: todo mensaje se enruta al
+            // onboarding del bot mientras `onboarding !== 'done'`, y los crons de
+            // resumen solo miran a los usuarios 'done'.
+            db.updateUser(chatId, { onboarding: 'done' });
+            scheduleCrons();
+
+            const u = db.getUser(chatId) || {};
+            const horarios = [
+              u.brief_morning ? `☀ ${u.brief_morning}` : null,
+              u.brief_evening ? `☾ ${u.brief_evening}` : null,
+            ].filter(Boolean).join('  ');
+
             console.log(`[link] ${fromName} (${chatId}) vinculado`);
-            await sendMessage(chatId, `✅ Listo, quedaste conectado como *${data.user.name || data.user.email}*.\n\nTus tareas son las mismas aquí y en el dashboard. Ahora unas preguntas rápidas para dejarte configurado 👇`);
-            await handleOnboarding(chatId, db.getUser(chatId), '');
+            await sendMessage(chatId,
+              `✅ Listo, quedaste conectado como *${data.user.name || data.user.email}*.\n\n` +
+              `Tus tareas y tus deudas son las mismas aquí y en el dashboard.\n` +
+              (horarios
+                ? `Te escribo ${horarios} (hora de ${u.timezone || 'tu zona'}).\n\n`
+                : `No tienes resúmenes activados; se prenden en Ajustes.\n\n`) +
+              `Todo eso se cambia en *Ajustes* en el dashboard — no hace falta configurarlo otra vez aquí.\n\n` +
+              `Escríbeme una tarea cuando quieras. También me puedes mandar un audio.`);
           } else {
             console.log(`[link] ${fromName} (${chatId}) re-vinculado`);
             await sendMessage(chatId, `✅ Conectado como *${data.user.name || data.user.email}*. Tus tareas son las mismas aquí y en el dashboard.`);
