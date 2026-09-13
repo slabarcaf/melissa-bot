@@ -22,6 +22,8 @@ El dashboard web vive en otro repo (`slabarcaf/task-dashboard`) y tiene su propi
 
 Do not add project status to this file. Status goes in a new dated handoff, so it never goes stale here.
 
+**Y no pongas en la documentación números que el código pueda desmentir.** Esta línea decía "41 unit tests", el handoff del 11-Sep decía "60 casos", y eran 69. Nadie miente: nadie vuelve a editar un número cuando agrega un test. Si hace falta un conteo, que lo imprima el comando.
+
 ## Invariants (violating these breaks production)
 
 - **Production runs `main`.** Resolved 2026-09-01: `pause-morning-brief` was merged into `main`, the deploy script now defaults to `main`, and the stale branch is gone. Older handoffs say prod runs `pause-morning-brief` — that is history, not current state.
@@ -32,7 +34,7 @@ Do not add project status to this file. Status goes in a new dated handoff, so i
   ```
   If they differ, reconcile first. Never overwrite `whatsapp-bot.js` with the local file blindly.
 - **`melissa.js` in this repo deploys as `/opt/melissa/whatsapp-bot/whatsapp-bot.js`.** Different filename, same file.
-- **`tasks-mcp.js` and `calendar-mcp.js` exist only on the VM** (`/opt/melissa/.openclaw/skills/`, mirrored in `/root/.openclaw/skills/`). They are not in this repo. Editing them means editing them on the VM, with a backup.
+- **Los tres servidores MCP están en el repo** desde 2026-09-13 y los despliega `ops/deploy-melissa.sh` como todo lo demás. `tasks-mcp.js` y `calendar-mcp.js` vivían solo en la VM, editados a mano, con ocho archivos `.bak` haciendo de control de versiones. El espejo en `/root/.openclaw/skills/` es historia de la migración, no un destino de despliegue.
 - **The nightly health check must fail when it cannot answer.** A check that swallows its own error and returns `ok:true` is worse than no check: the orphan-priority one was green for weeks without ever reading anything. Every task call it makes carries `X-Telegram-Chat-Id` — a bot request that names nobody is a 401 since the owner fallback was removed.
 - **`VALID_STATUS` in `runHealthCheck` mirrors `STATUS_FINAL_OUTCOME_OPTIONS`** in the dashboard's `src/lib/types.ts`. It was missing `On-going` until 2026-09-10, so a status the edit dialog offers would have been reported as corruption.
 - **Preferences are not stored here.** Language, timezone, brief times and categories live in the dashboard's Postgres; `melissa.db` is a **mirror** kept fresh by `prefs.js`. Reads are synchronous from the mirror so cron callbacks work and a cold API is staleness rather than an outage; writes go to the API first and are mirrored after. Never write a preference straight into SQLite — it will be overwritten by the next sync.
@@ -64,9 +66,9 @@ When production breaks right after a deploy: restart first to restore service, t
 ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST
 ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST 'sudo /root/deploy-melissa.sh [branch]'
 ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST 'sudo journalctl -u melissa-bot -n 50 --no-pager'
-npm test                  # syntax check + 41 unit tests on the pure helpers
-                          # (parsers, name sanitising, Telegram HTML rendering).
-                          # Run this plus SELFCHECK before every deploy.
+npm test                  # sintaxis de los 6 archivos desplegados + los tests
+                          # unitarios de los ayudantes puros. El script de
+                          # despliegue ya lo corre solo, y aborta si falla.
 ```
 
 Journald is not persistent on this VM. Logs vanish within hours, so capture anything you need while debugging.

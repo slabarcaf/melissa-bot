@@ -854,8 +854,28 @@ function startMCPServer(scriptPath, env, pendingMap, role) {
   // de Telegram y el de calendario, la llave de OpenAI y la de la API de tareas.
   // Ninguno necesita nada de eso. `spawn` con arreglo de argumentos y sin
   // `shell: true` ya estaba bien; esto solo cierra la otra mitad.
+  //
+  // ⚠️ Las rutas van en la lista porque los hijos SÍ las necesitan y antes las
+  // heredaban. Acotar el entorno sin ellas las dejó caer a sus valores por
+  // omisión, que apuntan a `/root` — inalcanzable para el usuario `melissa`
+  // bajo `ProtectHome`. El resultado fue silencioso: `add_category` empezó a
+  // lanzar excepción y el registro de uso por herramienta dejó de escribirse sin
+  // decir nada, porque su fallo está envuelto en un `catch {}`.
+  //
+  // Si agregas una variable al unit de systemd que un hijo lea, va también aquí.
+  // Heredar todo era cómodo justamente porque nadie tenía que acordarse; el
+  // precio de la lista explícita es este comentario.
+  const INHERITED_PATHS = ['CATS_PATH', 'PRIORITY_FILE', 'USAGE_DIR', 'USAGE_LOG'];
+  const inherited = {};
+  for (const key of INHERITED_PATHS) {
+    if (process.env[key]) inherited[key] = process.env[key];
+  }
+
   const proc = spawn('node', [scriptPath], {
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: process.env.NODE_ENV, ...env },
+    env: {
+      PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: process.env.NODE_ENV,
+      ...inherited, ...env
+    },
     stdio: ['pipe','pipe','pipe']
   });
   const rl = readline.createInterface({ input: proc.stdout });

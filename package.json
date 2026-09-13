@@ -5,7 +5,7 @@
   "main": "melissa.js",
   "scripts": {
     "start": "node melissa.js",
-    "test": "node --check melissa.js && node --check db.js && node test.js"
+    "test": "for f in melissa.js db.js prefs.js tasks-mcp.js calendar-mcp.js sheets-mcp.js; do node --check $f || exit 1; done && node test.js"
   },
   "author": "Santiago Labarca",
   "license": "MIT",

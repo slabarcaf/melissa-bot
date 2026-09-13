@@ -94,7 +94,7 @@ Telegram ──long-poll──▶ melissa.js ──▶ OpenAI gpt-5-mini (tool_c
 - **`sheets-mcp.js`** — MCP server wrapping the Networking Google Sheet (contacts and follow-ups).
 - All three MCP servers are spawned as child processes and communicate over stdin/stdout (JSON-RPC). They auto-restart on crash.
 
-> **Repo boundary:** only `melissa.js`, `db.js`, `sheets-mcp.js` and `categories.json` are shipped from this repo. `tasks-mcp.js` and `calendar-mcp.js` live **only on the server** (`SKILLS_DIR`) and are edited there — the deploy script does not touch them.
+> **Repo boundary:** desde 2026-09-13 el repo manda sobre todo lo que corre. El script despliega `melissa.js` (como `whatsapp-bot.js`), `db.js`, `prefs.js`, `package.json`, `package-lock.json` y los tres servidores MCP. `categories.json` está en el repo pero el script **no** lo copia.
 
 ---
 
@@ -106,7 +106,7 @@ Telegram ──long-poll──▶ melissa.js ──▶ OpenAI gpt-5-mini (tool_c
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - An OpenAI API key
 - A Google Cloud project with Gmail + Calendar APIs enabled, and OAuth2 credentials
-- The `tasks-mcp.js` and `calendar-mcp.js` MCP server scripts — **not in this repo**; they live on the server in `SKILLS_DIR` and are maintained there
+- Los tres servidores MCP (`tasks-mcp.js`, `calendar-mcp.js`, `sheets-mcp.js`) — **en este repo**, desplegados a `SKILLS_DIR`
 
 ### Install
 
@@ -180,7 +180,7 @@ To deploy a code change, push to GitHub and run the deploy script on the server:
 
 ```bash
 # From any machine with an authorized SSH key (~/.ssh/id_ed25519)
-ssh -i ~/.ssh/id_ed25519 opc@<VM_IP> 'sudo /root/deploy-melissa.sh [branch]'   # default branch: pause-morning-brief
+ssh -i ~/.ssh/id_ed25519 opc@<VM_IP> 'sudo /root/deploy-melissa.sh [branch]'   # default branch: main
 ```
 
 The script (`/root/deploy-melissa.sh` on the VM) pulls the branch via a read-only GitHub
@@ -191,7 +191,7 @@ deploy key, copies the files into place
 Server facts worth remembering:
 - The VM is Oracle Linux 8 — native npm modules that need glibc ≥ 2.29 or Python ≥ 3.8 **will not build**. SQLite is provided by Node 22's built-in `node:sqlite` for this reason (no `better-sqlite3`).
 - `/opt/melissa/whatsapp-bot/` is the runtime dir (not a git repo), owned by user `melissa`; `config.json` is `0600`.
-- MCP servers live in `/opt/melissa/.openclaw/skills/`. **`tasks-mcp.js` and `calendar-mcp.js` are NOT in this repo** — they are edited directly on the VM and are not shipped by the deploy script. Mirror any change to `/root/.openclaw/skills/` to keep the rollback tree in parity (use `sudo test -f` to check those paths — an unprivileged `[ -f /root/... ]` silently returns false).
+- MCP servers live in `/opt/melissa/.openclaw/skills/` y **los tres están en este repo** desde 2026-09-13; el script de despliegue los copia. Antes `tasks-mcp.js` y `calendar-mcp.js` se editaban directamente en la VM, y su control de versiones eran ocho archivos `.bak`. El árbol de `/root/.openclaw/skills/` queda como parte del camino de rollback, no como destino de despliegue.
 - **journald is volatile** (no `/var/log/journal`), so logs disappear within hours. Make it persistent before relying on logs to diagnose an incident.
 - SSH keys authorized for `opc`: Santiago's Mac and Windows PC (`windows-pc-melissa`).
 

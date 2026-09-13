@@ -1,0 +1,33 @@
+# La primera automatización de este repo.
+#
+# Todas las compuertas de calidad ya existían y funcionaban — `npm test`,
+# `SELFCHECK=1`, comparar el md5 contra la VM. Ninguna corría sola: cada una
+# dependía de que alguien se acordara de escribirla. Esto no agrega chequeos
+# nuevos, solo deja de confiar en la memoria.
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # El bot usa `node:sqlite`, que solo existe desde Node 22. Fijarlo aquí
+          # es también la única versión declarada en cualquier parte del proyecto.
+          node-version: '22'
+
+      # `npm ci` necesita el lockfile, que existe desde 2026-09-11. Sin
+      # `node_modules` los tests igual pasarían —`test.js` solo lee el texto de
+      # la fuente— y eso sería una luz verde que no probó nada.
+      - run: npm ci
+
+      - name: Sintaxis y pruebas unitarias
+        run: npm test
