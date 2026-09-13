@@ -47,3 +47,25 @@ sudo systemctl enable --now whatsapp-bot
 Caveat: only one may poll Telegram at a time; data written by `melissa-bot` since cutover lives in
 `/opt/melissa` (not `/root`). Decommission the root service + `/root` tree once the non-root service
 is confirmed stable.
+
+## Logs
+
+Persistentes desde 2026-09-13. `Storage=persistent` + `SystemMaxUse=200M` en
+`/etc/systemd/journald.conf`, con `/var/log/journal` creado a mano. Antes de eso
+journald era volátil en esta VM y los logs se borraban en horas, así que ningún
+incidente dejaba rastro.
+
+```bash
+sudo journalctl -u melissa-bot --since "2 days ago" --no-pager
+sudo journalctl --disk-usage
+```
+
+## Qué quedó desplegado
+
+`ops/deploy-melissa.sh` escribe `/opt/melissa/whatsapp-bot/DEPLOYED.json` con el
+commit y el md5 de cada archivo. Comparar contra el repo deja de ser un ritual
+que hay que recordar:
+
+```bash
+ssh -i ~/.ssh/id_ed25519 opc@$VM_HOST 'sudo cat /opt/melissa/whatsapp-bot/DEPLOYED.json'
+```

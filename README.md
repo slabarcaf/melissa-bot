@@ -192,7 +192,7 @@ Server facts worth remembering:
 - The VM is Oracle Linux 8 — native npm modules that need glibc ≥ 2.29 or Python ≥ 3.8 **will not build**. SQLite is provided by Node 22's built-in `node:sqlite` for this reason (no `better-sqlite3`).
 - `/opt/melissa/whatsapp-bot/` is the runtime dir (not a git repo), owned by user `melissa`; `config.json` is `0600`.
 - MCP servers live in `/opt/melissa/.openclaw/skills/` y **los tres están en este repo** desde 2026-09-13; el script de despliegue los copia. Antes `tasks-mcp.js` y `calendar-mcp.js` se editaban directamente en la VM, y su control de versiones eran ocho archivos `.bak`. El árbol de `/root/.openclaw/skills/` queda como parte del camino de rollback, no como destino de despliegue.
-- **journald is volatile** (no `/var/log/journal`), so logs disappear within hours. Make it persistent before relying on logs to diagnose an incident.
+- **journald es persistente** desde 2026-09-13: `Storage=persistent` y `SystemMaxUse=200M` en `/etc/systemd/journald.conf`, con `/var/log/journal` creado. Antes era volátil y los logs duraban horas.
 - SSH keys authorized for `opc`: Santiago's Mac and Windows PC (`windows-pc-melissa`).
 
 ## Task categories

@@ -71,4 +71,4 @@ npm test                  # sintaxis de los 6 archivos desplegados + los tests
                           # despliegue ya lo corre solo, y aborta si falla.
 ```
 
-Journald is not persistent on this VM. Logs vanish within hours, so capture anything you need while debugging.
+Journald **es persistente** desde 2026-09-13 (`/var/log/journal`, tope 200M). Durante meses no lo fue y los logs se borraban en horas, así que un incidente no dejaba evidencia — eso ya no aplica, y los `console.log` del bot por fin sirven para diagnosticar algo.
