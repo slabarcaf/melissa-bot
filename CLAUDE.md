@@ -10,7 +10,7 @@ Multi-user Telegram assistant "Sydney". Node, long-polling, OpenAI tool-calling 
 ls HANDOFF-*.md | tail -1
 ```
 
-Hoy eso es `HANDOFF-2026-09-11.md`.
+Hoy eso es `HANDOFF-2026-09-13.md`.
 
 That file is the source of truth for current status, the open defects, and the decisions not to relitigate. This file holds only the invariants that outlive any single handoff. `README.md` documents the features and config.
 
