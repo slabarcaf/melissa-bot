@@ -11,9 +11,18 @@ if [ ! -d "$REPO_DIR/.git" ]; then
   GIT_SSH_COMMAND='ssh -i /root/.ssh/github_deploy' git clone git@github.com:slabarcaf/melissa-bot.git "$REPO_DIR"
 fi
 cd "$REPO_DIR"
-GIT_SSH_COMMAND='ssh -i /root/.ssh/github_deploy' git fetch origin
-git checkout "$BRANCH"
-GIT_SSH_COMMAND='ssh -i /root/.ssh/github_deploy' git pull origin "$BRANCH"
+# `fetch` + `reset --hard`, no `pull`. Dos razones:
+#
+#  1. Un despliegue tiene que dejar la VM EXACTAMENTE en lo que dice la rama.
+#     `pull` es un merge, y un merge puede dejar el servidor en un árbol que no
+#     es ningún commit de origin — o pararse a pedir que se resuelva un
+#     conflicto, en un script que corre sin nadie mirando.
+#  2. Sobrevive a un historial reescrito. El 2026-09-21 se reescribió el de este
+#     repo para sacarle la IP de la VM, y con `pull` el siguiente despliegue
+#     habría fallado con "refusing to merge unrelated histories".
+GIT_SSH_COMMAND='ssh -i /root/.ssh/github_deploy' git fetch origin "$BRANCH"
+git checkout -B "$BRANCH" "origin/$BRANCH"
+git reset --hard "origin/$BRANCH"
 
 # melissa.js -> whatsapp-bot.js (runtime entry); db/package alongside; the three
 # MCP servers into skills. Until 2026-09-13 tasks-mcp.js and calendar-mcp.js were
