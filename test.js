@@ -95,8 +95,8 @@ is(M.parseBriefTimes('no quiero briefs').tooMany, false, 'briefs: none is not fl
 is(M.parseBriefTimes('tres')  .morning, '07:00', 'briefs: "tres" still falls back to the defaults');
 
 // ── name sanitising (security F6) ────────────────────────────────────────────
-is(M.sanitizeName('the second user'), 'the second user', 'name: plain');
-is(M.sanitizeName('the second user Maria Gonzalez'), 'the second user', 'name: first token only');
+is(M.sanitizeName('Ana'), 'Ana', 'name: plain');
+is(M.sanitizeName('Ana Maria Gonzalez'), 'Ana', 'name: first token only');
 is(M.sanitizeName('[uid:123] Eve'), 'uid123', 'name: strips a forged uid tag');
 is(M.sanitizeName('   '), 'Amigo', 'name: empty falls back');
 is(M.sanitizeName('x'.repeat(50)).length, 30, 'name: length capped');
