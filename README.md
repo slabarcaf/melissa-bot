@@ -160,5 +160,5 @@ silent duplicates like `Others` vs `Otros`.
 
 ---
 
-*Private repository. The dashboard half is at
+*MIT licensed. The dashboard half is at
 [slabarcaf/task-dashboard](https://github.com/slabarcaf/task-dashboard).*
