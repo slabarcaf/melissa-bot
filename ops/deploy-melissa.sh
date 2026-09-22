@@ -101,3 +101,21 @@ systemctl restart melissa-bot
 sleep 3
 systemctl is-active melissa-bot && echo "DEPLOY OK — $(git -C $REPO_DIR log -1 --oneline)"
 journalctl -u melissa-bot -n 5 --no-pager
+
+# ── El script se actualiza a sí mismo, al final y solo si todo salió bien ────
+#
+# Esta línea existe por un problema concreto: el script vive en el repo pero se
+# ejecuta desde /root/, y nada los mantenía iguales. El 2026-09-21 se arregló el
+# `git pull` de arriba en el repo y la VM siguió corriendo la versión vieja —
+# el arreglo estaba escrito y no estaba puesto.
+#
+# Va al final a propósito. Una copia al principio instalaría un script roto antes
+# de saber si funciona; aquí solo se copia una versión que acaba de desplegar de
+# verdad. Y no es fatal: si falla, el despliegue ya salió bien y lo único que
+# pasa es que la próxima vez hay que copiarlo a mano.
+if ! cmp -s "$REPO_DIR/ops/deploy-melissa.sh" /root/deploy-melissa.sh; then
+  cp -f "$REPO_DIR/ops/deploy-melissa.sh" /root/deploy-melissa.sh \
+    && chmod 755 /root/deploy-melissa.sh \
+    && echo "deploy-melissa.sh actualizado desde el repo" \
+    || echo "AVISO: no se pudo actualizar /root/deploy-melissa.sh — cópialo a mano"
+fi
